@@ -253,7 +253,7 @@ async function makeSlides(topic) {
   const first = cleaned.indexOf("{"), last = cleaned.lastIndexOf("}");
   if (first >= 0 && last > first) cleaned = cleaned.slice(first, last + 1);
   const data = JSON.parse(cleaned);
-  if (!Array.isArray(data.slides) || data.slides.length < 6) throw new Error("AI slaydlar tuzilmasini noto'g'ri qaytardi.");
+  if (!Array.isArray(data.slides) || data.slides.length !== 8) throw new Error("AI aynan 8 ta slayd qaytarmadi. Qayta urinib ko'ring.");
   data.slides = data.slides.slice(0, 8).map((slide, i) => ({
     title: String(slide.title || "Slayd " + (i + 1)),
     bullets: (Array.isArray(slide.bullets) ? slide.bullets : []).slice(0, 5).map(String),
