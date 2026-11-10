@@ -45,23 +45,43 @@ async function geminiGenerate(contents, generationConfig = {}) {
 
 async function groqGenerate(prompt, generationConfig = {}) {
   if (!GROQ_API_KEY) throw new Error("Groq API kaliti sozlanmagan.");
-  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+  const requestBody = {
+    model: GROQ_MODEL,
+    messages: [
+      { role: "system", content: "Sen professional o'zbek tilidagi taqdimot muallifisan. JSON so'ralganda faqat bitta to'g'ri JSON obyekt qaytar. Markdown, izoh yoki kod bloki yozma. Barcha kalit va matn qiymatlari qo'shtirnoq ichida bo'lsin." },
+      { role: "user", content: prompt }
+    ],
+    temperature: 0.2,
+    max_completion_tokens: generationConfig.maxOutputTokens || 3500,
+    ...(generationConfig.responseMimeType === "application/json" ? { response_format: { type: "json_object" } } : {})
+  };
+  const request = body => fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: { "Authorization": "Bearer " + GROQ_API_KEY, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: GROQ_MODEL,
-      messages: [
-        { role: "system", content: "Sen professional o'zbek tilidagi taqdimot muallifisan." },
-        { role: "user", content: prompt }
-      ],
-      temperature: 0.35,
-      max_completion_tokens: generationConfig.maxOutputTokens || 3500,
-      response_format: generationConfig.responseMimeType === "application/json" ? { type: "json_object" } : undefined
-    }),
+    body: JSON.stringify(body),
     signal: AbortSignal.timeout(45000)
   });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error("Groq API xatosi (" + response.status + "): " + (payload.error?.message || response.statusText));
+  let response = await request(requestBody);
+  let payload = await response.json().catch(() => ({}));
+
+  // Ba'zi model urinishlarida Groq JSON rejimi 400 qaytarishi mumkin.
+  // Bunday holatda modeldan prompt orqali qat'iy JSON so'rab, JSON rejimisiz qayta urinib ko'ramiz.
+  if (!response.ok && response.status === 400 &&
+      /failed to generate json/i.test(payload.error?.message || "") &&
+      requestBody.response_format) {
+    console.warn("Groq JSON rejimi xato berdi; oddiy rejimda qayta urinilmoqda.");
+    const retryBody = { ...requestBody };
+    delete retryBody.response_format;
+    response = await request(retryBody);
+    payload = await response.json().catch(() => ({}));
+  }
+
+  if (!response.ok) {
+    const detail = payload.error?.failed_generation
+      ? payload.error.message + " | failed_generation: " + payload.error.failed_generation
+      : (payload.error?.message || response.statusText);
+    throw new Error("Groq API xatosi (" + response.status + "): " + detail);
+  }
   const result = payload.choices?.[0]?.message?.content?.trim();
   if (!result) throw new Error("Groq bo'sh javob qaytardi.");
   return result;
