@@ -32,7 +32,7 @@ function cleanSlide(s,i) {
   const title=String(s.title||"").trim().slice(0,160);
   const bullets=Array.isArray(s.bullets)?s.bullets.slice(0,5).map(x=>String(x||"").trim().slice(0,500)).filter(Boolean):[];
   if(!title||!bullets.length) throw new Error((i+1)+"-slayd sarlavhasi yoki matni bo'sh.");
-  return {title,bullets,speaker_notes:String(s.speaker_notes||"").slice(0,2000)};
+  return {title,bullets,speaker_notes:String(s.speaker_notes||"").slice(0,2000),imagePosition:s.imagePosition==="left"?"left":"right"};
 }
 function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,botToken,requiredChannel,freeTesterIds,adminTelegramId,clickServiceId,clickMerchantId,clickMerchantUserId,clickSecretKey,slidePriceUzs,webAppUrl}) {
   const app=express(); app.disable("x-powered-by"); app.use(express.json({limit:"24mb"})); app.use(express.urlencoded({extended:false,limit:"1mb"}));
@@ -86,7 +86,7 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
       if(!slideResult.rowCount)throw new Error("To'lov qilingan loyiha slaydlari topilmadi.");
       const slides=[];
       for(const row of slideResult.rows){
-        const slide={id:row.id,title:row.title,bullets:String(row.body||"").split("\n").filter(Boolean),speaker_notes:row.speaker_notes||""};
+        const slide={id:row.id,title:row.title,bullets:String(row.body||"").split("\n").filter(Boolean),speaker_notes:row.speaker_notes||"",imagePosition:row.image_position||"right"};
         if(row.image_data){
           const ext=(row.image_mime||"image/png").includes("jpeg")?"jpg":"png";
           const imagePath=path.join(dir,"slide-"+row.slide_number+"."+ext);
@@ -155,8 +155,8 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
         await client.query("delete from public.slayd_slides where project_id=$1",[pid]);
         for(let i=0;i<slides.length;i++){
           const s=slides[i];
-          await client.query("insert into public.slayd_slides (project_id,slide_number,title,body,speaker_notes,image_data,image_mime) values ($1,$2,$3,$4,$5,$6,$7)",
-            [pid,i+1,s.title,s.bullets.join("\n"),s.speaker_notes,s.imageData||null,s.imageMime||null]);
+          await client.query("insert into public.slayd_slides (project_id,slide_number,title,body,speaker_notes,image_data,image_mime,image_position) values ($1,$2,$3,$4,$5,$6,$7,$8)",
+            [pid,i+1,s.title,s.bullets.join("\n"),s.speaker_notes,s.imageData||null,s.imageMime||null,s.imagePosition]);
         }
         await client.query("commit");
       }catch(e){await client.query("rollback");throw e;}finally{client.release();}
