@@ -417,7 +417,7 @@ function createPdf(data, outputPath) {
     const stream = fs.createWriteStream(outputPath);
     doc.pipe(stream);
     const C = { navy: "#101B35", navy2: "#19294B", blue: "#3977F6", cyan: "#36C5D8", ink: "#18243A", muted: "#65738B", paper: "#F4F7FC", white: "#FFFFFF", line: "#E3EAF4", pale: "#EAF1FF", paleCyan: "#E8F8FA" };
-    const safe = v => String(v || "").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "");
+    const safe = v => String(v || "").replace(/[ʻʼ‘’]/g, "'").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "").replace(/[\u{1F300}-\u{1FAFF}]/gu, "");
     data.slides.forEach((slide, index) => {
       if (index) doc.addPage({ size: [960, 540], margin: 0 });
       const cover = index === 0;
