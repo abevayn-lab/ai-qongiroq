@@ -226,7 +226,7 @@ async function generateAndSend(ctx, source) {
   try {
     console.log("Taqdimot: Groq asosiy, Gemini zaxira AI so'rovi boshlandi.");
     const data = await makeSlides(source);
-    console.log("Taqdimot: Gemini javobi olindi, PDF tayyorlanmoqda.");
+    console.log("Taqdimot: AI javobi olindi, PDF tayyorlanmoqda.");
     await createPdf(data, outputPath);
     console.log("Taqdimot: PDF tayyor.");
     await ctx.replyWithDocument(new InputFile(outputPath, "slayd-ai-taqdimot.pdf"), {
