@@ -577,5 +577,19 @@ bot.on("message:photo", async (ctx) => {
 
 bot.catch((error) => console.error("Bot xatosi:", error));
 startWebApp({ bot, db, makeSlides, createPdf, generateSlideImages, InputFile, botToken: BOT_TOKEN, requiredChannel: REQUIRED_CHANNEL, freeTesterIds: FREE_TESTER_IDS, adminTelegramId: ADMIN_TELEGRAM_ID, clickServiceId: CLICK_SERVICE_ID, clickMerchantId: CLICK_MERCHANT_ID, clickMerchantUserId: CLICK_MERCHANT_USER_ID, clickSecretKey: CLICK_SECRET_KEY, slidePriceUzs: SLIDE_PRICE_UZS, webAppUrl: WEB_APP_URL });
-bot.start();
-console.log("SLAYD AI bot ishga tushdi.");
+async function startBotWithRetry() {
+  while (true) {
+    try {
+      await bot.start();
+      return;
+    } catch (error) {
+      console.error("Telegram polling xatosi:", error);
+      if (error?.error_code === 409) {
+        console.error("409 Conflict: shu BOT_TOKEN boshqa jarayonda ishlayapti. Web App serveri ishlashda davom etadi; 15 soniyadan keyin bot qayta ulanadi.");
+      }
+      await new Promise(resolve => setTimeout(resolve, 15000));
+    }
+  }
+}
+startBotWithRetry().catch(error => console.error("Bot ishga tushirish xatosi:", error));
+console.log("SLAYD AI bot va Web App ishga tushdi.");
