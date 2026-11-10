@@ -1,13 +1,14 @@
 require("dotenv").config();
 
-const { Bot, InputFile } = require("grammy");
+const { Bot, InputFile, InlineKeyboard } = require("grammy");
 const PDFDocument = require("pdfkit");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+const { startWebApp } = require("./web");
 const { Pool } = require("pg");
 
-const { BOT_TOKEN, GROQ_API_KEY, GROQ_MODEL = "openai/gpt-oss-120b", GEMINI_API_KEY, GEMINI_MODEL = "gemini-3.8-flash", DATABASE_URL, ADMIN_TELEGRAM_ID } = process.env;
+const { BOT_TOKEN, GROQ_API_KEY, GROQ_MODEL = "openai/gpt-oss-120b", GEMINI_API_KEY, GEMINI_MODEL = "gemini-3.8-flash", DATABASE_URL, ADMIN_TELEGRAM_ID, WEB_APP_URL } = process.env;
 
 if (!BOT_TOKEN || (!GROQ_API_KEY && !GEMINI_API_KEY)) {
   console.error("BOT_TOKEN va kamida bitta AI API kaliti kerak.");
@@ -88,12 +89,16 @@ bot.command("id", async (ctx) => {
 });
 
 bot.command("start", async (ctx) => {
-  await ctx.reply(
-    "👋 Assalomu alaykum! Men SLAYD AI.\n\n" +
-    "📚 Menga taqdimot mavzusini yozing yoki topshiriq/kitob sahifasining rasmini yuboring.\n" +
-    "Men sizga 8 slayddan iborat PDF taqdimot tayyorlayman.\n\n" +
-    "Masalan: Sun'iy intellektning ta'limdagi o'rni"
-  );
+  const message = "👋 Assalomu alaykum! Men SLAYD AI.\n\n📚 Mavzuni yozing yoki Web App orqali taqdimotni tahrirlang.\n8 slaydli PDF tayyorlayman.";
+  if (WEB_APP_URL && /^https:\/\//i.test(WEB_APP_URL)) {
+    await ctx.reply(message, { reply_markup: new InlineKeyboard().webApp("🎨 Taqdimot yaratish va tahrirlash", WEB_APP_URL) });
+  } else {
+    await ctx.reply(message + "\n\n⚙️ Web App uchun Railway Variables ichida WEB_APP_URL kiriting.");
+  }
+});
+bot.command("webapp", async (ctx) => {
+  if (!WEB_APP_URL || !/^https:\/\//i.test(WEB_APP_URL)) return ctx.reply("Web App manzili hali sozlanmagan.");
+  await ctx.reply("🎨 Taqdimot muharriri:", { reply_markup: new InlineKeyboard().webApp("Web Appni ochish", WEB_APP_URL) });
 });
 
 bot.command("help", async (ctx) => {
@@ -274,7 +279,8 @@ function createPdf(data, outputPath) {
         doc.circle(830, 110, 64).fill(C.blue);
         doc.fillColor(C.white).font("Helvetica-Bold").fontSize(12).text("SLAYD AI  /  TAQDIMOT", 68, 54, { characterSpacing: 2 });
         doc.fillColor(C.cyan).font("Helvetica-Bold").fontSize(11).text("BILIM  •  TAHLIL  •  G'OYA", 70, 145);
-        doc.fillColor(C.white).font("Helvetica-Bold").fontSize(35).text(safe(slide.title || data.title || "Taqdimot"), 68, 183, { width: 690, height: 120, ellipsis: true });
+        doc.fillColor(C.white).font("Helvetica-Bold").fontSize(35).text(safe(slide.title || data.title || "Taqdimot"), 68, 183, { width: slide.imagePath ? 550 : 690, height: 120, ellipsis: true });
+        if (slide.imagePath && fs.existsSync(slide.imagePath)) { try { doc.image(slide.imagePath, 675, 245, { fit: [220, 185] }); } catch (e) { console.warn("Cover image:", e.message); } }
         doc.roundedRect(70, 322, 86, 5, 2).fill(C.cyan);
         doc.fillColor("#D5DEEF").font("Helvetica").fontSize(17).text(safe(data.subtitle || "Mavzu bo'yicha tayyorlangan taqdimot"), 70, 348, { width: 690, height: 52, ellipsis: true });
         slide.bullets.slice(0, 3).forEach((item, i) => {
@@ -298,8 +304,9 @@ function createPdf(data, outputPath) {
           doc.roundedRect(58, y, 5, cardH, 2).fill(j % 2 ? C.cyan : C.blue);
           doc.circle(91, y + cardH / 2, 12).fill(j % 2 ? C.paleCyan : C.pale);
           doc.fillColor(C.blue).font("Helvetica-Bold").fontSize(10).text(String(j + 1).padStart(2, "0"), 82, y + cardH / 2 - 4, { width: 18, align: "center" });
-          doc.fillColor(C.ink).font("Helvetica").fontSize(cardH < 52 ? 13 : 15).text(safe(item), 119, y + 12, { width: 750, height: cardH - 18, ellipsis: true, lineGap: 3 });
+          doc.fillColor(C.ink).font("Helvetica").fontSize(cardH < 52 ? 13 : 15).text(safe(item), 119, y + 12, { width: slide.imagePath ? 485 : 750, height: cardH - 18, ellipsis: true, lineGap: 3 });
         });
+        if (slide.imagePath && fs.existsSync(slide.imagePath)) { try { doc.image(slide.imagePath, 650, 190, { fit: [235, 235] }); } catch (e) { console.warn("Slide image:", e.message); } }
         doc.moveTo(58, 492).lineTo(902, 492).strokeColor(C.line).lineWidth(1).stroke();
         doc.fillColor(C.muted).font("Helvetica").fontSize(9).text("SLAYD AI  •  O'QUV TAQDIMOTI", 58, 505);
         doc.fillColor(C.muted).font("Helvetica-Bold").fontSize(10).text(String(index + 1).padStart(2, "0") + " / " + String(data.slides.length).padStart(2, "0"), 820, 503, { width: 80, align: "right" });
@@ -354,5 +361,6 @@ bot.on("message:photo", async (ctx) => {
 });
 
 bot.catch((error) => console.error("Bot xatosi:", error));
+startWebApp({ bot, db, makeSlides, createPdf, InputFile, botToken: BOT_TOKEN });
 bot.start();
 console.log("SLAYD AI bot ishga tushdi.");
