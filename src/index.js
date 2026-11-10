@@ -17,6 +17,30 @@ if (!BOT_TOKEN || (!GROQ_API_KEY && !GEMINI_API_KEY)) {
 
 const bot = new Bot(BOT_TOKEN);
 
+class Semaphore {
+  constructor(concurrency, maxQueued) {
+    this.concurrency = concurrency;
+    this.maxQueued = maxQueued;
+    this.active = 0;
+    this.waiters = [];
+  }
+  async run(task) {
+    if (this.active >= this.concurrency) {
+      if (this.waiters.length >= this.maxQueued) throw new Error("Serverda navbat to'ldi. Birozdan keyin qayta urinib ko'ring.");
+      await new Promise(resolve => this.waiters.push(resolve));
+    }
+    this.active++;
+    try { return await task(); }
+    finally {
+      this.active--;
+      const next = this.waiters.shift();
+      if (next) next();
+    }
+  }
+}
+const textQueue = new Semaphore(2, 40);
+const imageQueue = new Semaphore(2, 40);
+
 function validWebAppUrl(value) {
   try {
     const u = new URL(String(value || ""));
@@ -240,7 +264,7 @@ async function groqGenerate(prompt, generationConfig = {}) {
   return result;
 }
 
-async function generateText(prompt, generationConfig = {}) {
+async function generateTextUnqueued(prompt, generationConfig = {}) {
   const errors = [];
   if (GROQ_API_KEY) {
     for (let attempt = 1; attempt <= 2; attempt++) {
@@ -268,6 +292,10 @@ async function generateText(prompt, generationConfig = {}) {
     }
   }
   throw new Error("AI xizmatlari javob bermadi: " + errors.map(e => e.message).join(" | "));
+}
+
+async function generateText(prompt, generationConfig = {}) {
+  return textQueue.run(() => generateTextUnqueued(prompt, generationConfig));
 }
 
 async function extractImageText(ctx) {
