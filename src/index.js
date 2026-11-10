@@ -84,6 +84,7 @@ bot.use(async (ctx, next) => {
 });
 
 const freeTesterIds = new Set(FREE_TESTER_IDS.split(",").map(x => x.trim()).filter(Boolean));
+const adminInputState = new Map();
 function isFreeTester(userId) {
   return Number(userId) === Number(ADMIN_TELEGRAM_ID) || freeTesterIds.has(String(userId));
 }
@@ -115,6 +116,24 @@ bot.callbackQuery("check_subscription", async (ctx) => {
   } else {
     await ctx.answerCallbackQuery({ text: "Kanalga obuna bo'lish hali aniqlanmadi.", show_alert: true });
   }
+});
+
+
+bot.callbackQuery(/^cfg:(payment_card_number|payment_card_holder|payment_price_uzs|payment_review_chat_id)$/, async ctx => {
+  if(Number(ctx.from.id)!==Number(ADMIN_TELEGRAM_ID)) return ctx.answerCallbackQuery({text:'Faqat admin.',show_alert:true});
+  const key=ctx.match[1]; adminInputState.set(String(ctx.from.id),key); await ctx.answerCallbackQuery();
+  const prompts={payment_card_number:'Karta raqamini yuboring:',payment_card_holder:'Karta egasining ism-familiyasini yuboring:',payment_price_uzs:'Narxni so‘mda raqam bilan yuboring:',payment_review_chat_id:'Chek kanali postini menga forward qiling:'};
+  await ctx.reply(prompts[key]);
+});
+bot.on('message:text', async (ctx,next)=>{
+  const key=adminInputState.get(String(ctx.from?.id));
+  if(!key||Number(ctx.from?.id)!==Number(ADMIN_TELEGRAM_ID)||ctx.message.text.startsWith('/')) return next();
+  const value=ctx.message.text.trim();
+  if(key==='payment_price_uzs'&&(!/^\\d+$/.test(value)||Number(value)<=0)) return ctx.reply('Narxni musbat raqamda kiriting.');
+  if(key==='payment_card_number'&&!/^[0-9 ]{12,25}$/.test(value)) return ctx.reply('Karta raqamini tekshirib qayta yuboring.');
+  if(key==='payment_review_chat_id') return ctx.reply('Kanal postini forward qiling.');
+  await db.query('insert into public.slayd_settings(setting_key,setting_value,updated_by,updated_at) values($1,$2,$3,now()) on conflict(setting_key) do update set setting_value=excluded.setting_value,updated_by=excluded.updated_by,updated_at=now()',[key,value,Number(ctx.from.id)]);
+  adminInputState.delete(String(ctx.from.id)); await ctx.reply('Saqlandi. /admin orqali davom eting.');
 });
 
 bot.command("admin", async (ctx) => {
