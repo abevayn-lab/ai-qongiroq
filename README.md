@@ -16,7 +16,7 @@ Telegram bot + Telegram Web App for creating, editing and delivering 8-slide PDF
 - \`BOT_TOKEN\` — Telegram bot token
 - \`DATABASE_URL\` — Supabase PostgreSQL connection string (pooler URL is supported)
 - \`ADMIN_TELEGRAM_ID\` — numeric Telegram ID of the owner
-- \`WEB_APP_URL\` — HTTPS public Railway domain, e.g. \`https://your-app.up.railway.app\`
+- \`WEB_APP_URL\` — HTTPS public Railway domain, e.g. \`https://ai-qongiroq-production.up.railway.app\`
 - At least one text provider: \`GROQ_API_KEY\` or \`GEMINI_API_KEY\`
 
 ## AI variables
@@ -50,7 +50,7 @@ Set these values only after Click merchant onboarding:
 
 Configure both Click Shop API Prepare and Complete callback URLs as:
 
-\`https://YOUR-RAILWAY-DOMAIN/api/click\`
+\`https://ai-qongiroq-production.up.railway.app/api/click\`
 
 The callback validates Click signatures and payment amount. A PDF is delivered only after a verified successful Complete callback. If Click is not configured, regular users cannot receive a free PDF; admin and allowlisted test accounts remain free.
 
