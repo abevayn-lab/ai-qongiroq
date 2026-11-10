@@ -34,16 +34,28 @@ function cleanSlide(s,i) {
   if(!title||!bullets.length) throw new Error((i+1)+"-slayd sarlavhasi yoki matni bo'sh.");
   return {title,bullets,speaker_notes:String(s.speaker_notes||"").slice(0,2000)};
 }
-function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,botToken}) {
+function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,botToken,requiredChannel,freeTesterIds,adminTelegramId}) {
   const app=express(); app.disable("x-powered-by"); app.use(express.json({limit:"24mb"}));
   app.use(express.static(path.join(__dirname,"../public"),{extensions:["html"]}));
   const rate=new Map();
+  const freeIds=new Set(String(freeTesterIds||"").split(",").map(x=>x.trim()).filter(Boolean));
+  function isFreeUser(id){return Number(id)===Number(adminTelegramId)||freeIds.has(String(id));}
+  async function channelMember(id){
+    if(!requiredChannel)return true;
+    try{
+      const m=await bot.api.getChatMember(requiredChannel,id);
+      return ["creator","administrator","member"].includes(m.status)||(m.status==="restricted"&&m.is_member===true);
+    }catch(e){console.error("Web channel check:",e.message);return false;}
+  }
   function auth(req,res,next){try{req.tgUser=verifyTelegramInitData(req.get("x-telegram-init-data"),botToken);next();}catch(e){res.status(401).json({error:e.message});}}
   function limit(req,res,next){const id=String(req.tgUser.id),now=Date.now(),old=(rate.get(id)||[]).filter(x=>now-x<60000);if(old.length>=4)return res.status(429).json({error:"Bir daqiqada 4 ta so'rov limiti. Biroz kuting."});old.push(now);rate.set(id,old);next();}
   app.get("/health",(_q,res)=>res.json({ok:true,service:"slayd-ai"}));
   app.post("/api/generate",auth,limit,async(req,res)=>{
     if(!db)return res.status(503).json({error:"Ma'lumotlar bazasi ulanmagan."});
-    const topic=String(req.body?.topic||"").trim().slice(0,2000),uid=Number(req.tgUser.id);if(topic.length<4)return res.status(400).json({error:"Mavzuni kamida 4 ta belgida yozing."});
+    const topic=String(req.body?.topic||"").trim().slice(0,2000),uid=Number(req.tgUser.id);
+    if(!isFreeUser(uid))return res.status(402).json({error:"Sinov rejimida faqat admin va ruxsat berilgan test akkauntlari foydalanadi. Click to'lovi ulanmoqda."});
+    if(!(await channelMember(uid)))return res.status(403).json({error:"Davom etish uchun majburiy kanalga obuna bo'ling."});
+    if(topic.length<4)return res.status(400).json({error:"Mavzuni kamida 4 ta belgida yozing."});
     let pid;
     try{
       await db.query("insert into public.slayd_users (telegram_id,username,first_name,last_name,last_seen_at) values ($1,$2,$3,$4,now()) on conflict (telegram_id) do update set username=excluded.username,first_name=excluded.first_name,last_name=excluded.last_name,last_seen_at=now()",
@@ -63,6 +75,8 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
   app.post("/api/finish",auth,limit,async(req,res)=>{
     if(!db)return res.status(503).json({error:"Ma'lumotlar bazasi ulanmagan."});
     const uid=Number(req.tgUser.id),pid=String(req.body?.projectId||""),name=fileName(req.body?.fileName),title=String(req.body?.title||"SLAYD AI").slice(0,160),input=req.body?.slides;
+    if(!isFreeUser(uid))return res.status(402).json({error:"Sinov rejimida faqat admin va ruxsat berilgan test akkauntlari foydalanadi."});
+    if(!(await channelMember(uid)))return res.status(403).json({error:"Majburiy kanalga obuna bo'ling."});
     if(!/^[0-9a-f-]{36}$/i.test(pid)||!Array.isArray(input)||input.length<6||input.length>8)return res.status(400).json({error:"Taqdimot ma'lumotlari noto'g'ri."});
     const dir=fs.mkdtempSync(path.join(os.tmpdir(),"slayd-web-")),pdf=path.join(dir,name);
     try{
