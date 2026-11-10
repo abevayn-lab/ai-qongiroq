@@ -80,9 +80,7 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
     if(topic.length<4)return res.status(400).json({error:"Mavzuni kamida 4 ta belgida yozing."});
     if(!(await channelMember(uid)))return res.status(403).json({error:"Davom etish uchun majburiy kanalga obuna bo'ling. Botga qaytib kanalga obuna bo'ling va qayta tekshiring."});
 
-    const dailyLimit=Number(uid)===Number(adminTelegramId)?100:(isFreeUser(uid)?25:3);
-    const daily=await db.query("select count(*)::int as n from public.slayd_projects where telegram_user_id=$1 and created_at>now()-interval '24 hours'",[uid]);
-    if(Number(daily.rows[0].n)>=dailyLimit)return res.status(429).json({error:"Kunlik taqdimot limiti tugadi. Ertaga qayta urinib ko'ring."});
+    // Per-user daily generation cap removed; request throttling and active-project limits remain.
     const active=await db.query("select count(*)::int as n from public.slayd_projects where telegram_user_id=$1 and status in ('draft','generating','awaiting_payment','paid') and created_at>now()-interval '2 hours'",[uid]);
     if(Number(active.rows[0].n)>=(isFreeUser(uid)?4:2))return res.status(409).json({error:"Sizda yakunlanmagan taqdimotlar bor. Avval ularni yakunlang."});
     let pid;
@@ -98,7 +96,7 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
         for(let i=0;i<data.slides.length;i++){const s=data.slides[i];await client.query("insert into public.slayd_slides (project_id,slide_number,title,body,speaker_notes) values ($1,$2,$3,$4,$5)",[pid,i+1,s.title,(s.bullets||[]).join("\n"),s.speaker_notes||""]);}
         await client.query("update public.slayd_projects set status='draft',updated_at=now() where id=$1 and telegram_user_id=$2",[pid,uid]);await client.query("commit");
       }catch(e){await client.query("rollback");throw e;}finally{client.release();}
-      res.json({projectId:pid,title:data.title||topic,subtitle:data.subtitle||"SLAYD AI taqdimoti",slides:data.slides});
+      res.json({projectId:pid,title:data.title||topic,subtitle:data.subtitle||"Mavzu bo‘yicha taqdimot",slides:data.slides});
     }catch(e){if(pid)try{await db.query("update public.slayd_projects set status='failed',error_message=$1,updated_at=now() where id=$2 and telegram_user_id=$3",[String(e.message).slice(0,1000),pid,uid]);}catch(_){}console.error("Web generate:",e);const busy=String(e.message||"").includes("navbat");res.status(busy?503:500).json({error:busy?e.message:"Taqdimot yaratilmadi. Birozdan keyin qayta urinib ko'ring."});}
   }));
   async function deliverPaidProject(projectId) {
@@ -184,7 +182,7 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
   });
   app.post("/api/finish",auth,limit,asyncRoute(async(req,res)=>{
     if(!db)return res.status(503).json({error:"Ma'lumotlar bazasi ulanmagan."});
-    const uid=Number(req.tgUser.id),pid=String(req.body?.projectId||""),name=fileName(req.body?.fileName),title=String(req.body?.title||"SLAYD AI").slice(0,160),input=req.body?.slides;
+    const uid=Number(req.tgUser.id),pid=String(req.body?.projectId||""),name=fileName(req.body?.fileName),title=String(req.body?.title||"Taqdimot").slice(0,160),input=req.body?.slides;
     const free=isFreeUser(uid);
     const settings=await Promise.all(["payment_card_number","payment_card_holder","payment_price_uzs","payment_review_chat_id"].map(getSetting));
     const paymentPrice=Number(settings[2]);
@@ -233,7 +231,7 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
         return res.json({ok:true,paymentRequired:true,orderCode,cardNumber:settings[0],cardHolder:settings[1],priceUzs:paymentPrice,message:"Kartaga to‘lov qiling va chek rasmini Telegram botga yuboring."});
       }
 
-      await createPdf({title,subtitle:"SLAYD AI orqali tayyorlandi",slides},pdf);
+      await createPdf({title,subtitle:"",slides},pdf);
       await bot.api.sendDocument(uid,new InputFile(pdf,name),{caption:"✅ Taqdimotingiz tayyor va Telegram chatga yuborildi!"});
       await db.query("update public.slayd_projects set status='completed',pdf_path=$1,updated_at=now() where id=$2 and telegram_user_id=$3",[name,pid,uid]);
       try{await db.query("update public.slayd_slides set image_data=null,image_mime=null where project_id=$1",[pid]);}catch(cleanupError){console.warn("Free image cleanup:",cleanupError.message);}
