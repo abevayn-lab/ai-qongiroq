@@ -136,7 +136,7 @@ bot.on('message:text', async (ctx,next)=>{
   adminInputState.delete(String(ctx.from.id)); await ctx.reply('Saqlandi. /admin orqali davom eting.');
 });
 
-bot.command("admin", async (ctx) => {
+bot.command("stats", async (ctx) => {
   const adminId = ADMIN_TELEGRAM_ID ? Number(ADMIN_TELEGRAM_ID) : null;
   if (!adminId || Number(ctx.from?.id) !== adminId) {
     return ctx.reply("⛔ Bu buyruq faqat administrator uchun.");
