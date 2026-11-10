@@ -35,7 +35,7 @@ function cleanSlide(s,i) {
   return {title,bullets,speaker_notes:String(s.speaker_notes||"").slice(0,2000)};
 }
 function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,botToken,requiredChannel,freeTesterIds,adminTelegramId}) {
-  const app=express(); app.disable("x-powered-by"); app.use(express.json({limit:"24mb"}));
+  const app=express(); app.disable("x-powered-by"); app.use(express.json({limit:"24mb"})); app.use(express.urlencoded({extended:false,limit:"1mb"}));
   app.use(express.static(path.join(__dirname,"../public"),{extensions:["html"]}));
   const rate=new Map();
   const freeIds=new Set(String(freeTesterIds||"").split(",").map(x=>x.trim()).filter(Boolean));
@@ -72,35 +72,152 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
       res.json({projectId:pid,title:data.title||topic,subtitle:data.subtitle||"SLAYD AI taqdimoti",slides:data.slides});
     }catch(e){if(pid)try{await db.query("update public.slayd_projects set status='failed',error_message=$1,updated_at=now() where id=$2 and telegram_user_id=$3",[String(e.message).slice(0,1000),pid,uid]);}catch(_){}console.error("Web generate:",e);res.status(500).json({error:"Taqdimot yaratilmadi. Birozdan keyin qayta urinib ko'ring."});}
   });
+  async function deliverPaidProject(projectId) {
+    const dir=fs.mkdtempSync(path.join(os.tmpdir(),"slayd-paid-"));
+    try {
+      const projectResult=await db.query("select * from public.slayd_projects where id=$1",[projectId]);
+      if(!projectResult.rowCount)throw new Error("To'lov loyihasi topilmadi.");
+      const project=projectResult.rows[0];
+      const slideResult=await db.query("select * from public.slayd_slides where project_id=$1 order by slide_number",[projectId]);
+      if(!slideResult.rowCount)throw new Error("To'lov qilingan loyiha slaydlari topilmadi.");
+      const slides=[];
+      for(const row of slideResult.rows){
+        const slide={title:row.title,bullets:String(row.body||"").split("\n").filter(Boolean),speaker_notes:row.speaker_notes||""};
+        if(row.image_data){
+          const ext=(row.image_mime||"image/png").includes("jpeg")?"jpg":"png";
+          const imagePath=path.join(dir,"slide-"+row.slide_number+"."+ext);
+          fs.writeFileSync(imagePath,Buffer.from(row.image_data));
+          slide.imagePath=imagePath;
+        }
+        slides.push(slide);
+      }
+      const pdfPath=path.join(dir,fileName(project.file_name));
+      await createPdf({title:project.topic||slides[0].title,subtitle:"SLAYD AI orqali tayyorlandi",slides},pdfPath);
+      await bot.api.sendDocument(Number(project.telegram_user_id),new InputFile(pdfPath,fileName(project.file_name)),{caption:"✅ Click to'lovi tasdiqlandi. Taqdimotingiz tayyor va Telegram chatga yuborildi!"});
+      await db.query("update public.slayd_projects set status='completed',pdf_path=$1,error_message=null,updated_at=now() where id=$2",[fileName(project.file_name),projectId]);
+    } finally {
+      fs.rmSync(dir,{recursive:true,force:true});
+    }
+  }
+
   app.post("/api/finish",auth,limit,async(req,res)=>{
     if(!db)return res.status(503).json({error:"Ma'lumotlar bazasi ulanmagan."});
     const uid=Number(req.tgUser.id),pid=String(req.body?.projectId||""),name=fileName(req.body?.fileName),title=String(req.body?.title||"SLAYD AI").slice(0,160),input=req.body?.slides;
-    if(!isFreeUser(uid))return res.status(402).json({error:"Sinov rejimida faqat admin va ruxsat berilgan test akkauntlari foydalanadi."});
-    if(!(await channelMember(uid)))return res.status(403).json({error:"Majburiy kanalga obuna bo'ling."});
-    if(!/^[0-9a-f-]{36}$/i.test(pid)||!Array.isArray(input)||input.length<6||input.length>8)return res.status(400).json({error:"Taqdimot ma'lumotlari noto'g'ri."});
-    const dir=fs.mkdtempSync(path.join(os.tmpdir(),"slayd-web-")),pdf=path.join(dir,name);
+    const free=isFreeUser(uid);
+    const clickPrice=Number(slidePriceUzs);
+    const clickReady=Boolean(clickServiceId&&clickMerchantId&&clickSecretKey&&Number.isSafeInteger(clickPrice)&&clickPrice>0&&webAppUrl);
+    if(!free&&!clickReady)return res.status(503).json({error:"Click hali sozlanmagan. To'lov uchun Click merchant ma'lumotlari va SLIDE_PRICE_UZS kerak."});
+    if(!/^[0-9a-f-]{36}$/i.test(pid)||!Array.isArray(input)||input.length!==8)return res.status(400).json({error:"Taqdimotda aynan 8 ta slayd bo'lishi kerak."});
+    const dir=fs.mkdtempSync(path.join(os.tmpdir(),"slayd-finish-")),pdf=path.join(dir,name);
     try{
       const claim=await db.query("update public.slayd_projects set status='generating',file_name=$1,updated_at=now() where id=$2 and telegram_user_id=$3 and status='draft' returning id",[name,pid,uid]);
       if(!claim.rowCount)return res.status(409).json({error:"Taqdimot topilmadi, allaqachon yuborilmoqda yoki yakunlangan."});
       const slides=[];
       for(let i=0;i<input.length;i++){
         const s=cleanSlide(input[i],i);
-        if(input[i].imageData){const m=/^data:image\/(png|jpeg);base64,([A-Za-z0-9+/=]+)$/.exec(input[i].imageData);if(!m)throw new Error((i+1)+"-slayd rasmi PNG yoki JPG bo'lishi kerak.");const bytes=Buffer.from(m[2],"base64");if(bytes.length>5*1024*1024)throw new Error("Rasm 5 MB dan katta.");const img=path.join(dir,"slide-"+(i+1)+(m[1]==="png"?".png":".jpg"));fs.writeFileSync(img,bytes,{flag:"wx"});s.imagePath=img;}
+        if(input[i].imageData){
+          const m=/^data:image\/(png|jpeg);base64,([A-Za-z0-9+/=]+)$/.exec(input[i].imageData);
+          if(!m)throw new Error((i+1)+"-slayd rasmi PNG yoki JPG bo'lishi kerak.");
+          const bytes=Buffer.from(m[2],"base64");
+          if(bytes.length>2*1024*1024)throw new Error((i+1)+"-slayd rasmi 2 MB dan katta.");
+          const img=path.join(dir,"upload-"+(i+1)+(m[1]==="png"?".png":".jpg"));
+          fs.writeFileSync(img,bytes,{flag:"wx"});s.imagePath=img;s.imageData=bytes;s.imageMime=m[1]==="png"?"image/png":"image/jpeg";
+        }
         slides.push(s);
       }
-      if (generateSlideImages) await generateSlideImages({title,slides},dir);
-      await createPdf({title,subtitle:"SLAYD AI orqali tayyorlandi",slides},pdf);
-      await bot.api.sendDocument(uid,new InputFile(pdf,name),{caption:"✅ Taqdimotingiz tayyor va Telegram chatga yuborildi!"});
+      if(generateSlideImages)await generateSlideImages({title,slides},dir);
+      for(const slide of slides){
+        if(!slide.imageData&&slide.imagePath&&fs.existsSync(slide.imagePath)){
+          slide.imageData=fs.readFileSync(slide.imagePath);
+          slide.imageMime=path.extname(slide.imagePath).toLowerCase()===".jpg"?"image/jpeg":"image/png";
+        }
+      }
       const client=await db.connect();
       try{
         await client.query("begin");
         await client.query("delete from public.slayd_slides where project_id=$1",[pid]);
-        for(let i=0;i<slides.length;i++){const s=slides[i];await client.query("insert into public.slayd_slides (project_id,slide_number,title,body,speaker_notes,image_path) values ($1,$2,$3,$4,$5,$6)",[pid,i+1,s.title,s.bullets.join("\n"),s.speaker_notes,null]);}
-        await client.query("update public.slayd_projects set status='completed',pdf_path=$1,updated_at=now() where id=$2 and telegram_user_id=$3",[name,pid,uid]);await client.query("commit");
+        for(let i=0;i<slides.length;i++){
+          const s=slides[i];
+          await client.query("insert into public.slayd_slides (project_id,slide_number,title,body,speaker_notes,image_data,image_mime) values ($1,$2,$3,$4,$5,$6,$7)",
+            [pid,i+1,s.title,s.bullets.join("\n"),s.speaker_notes,s.imageData||null,s.imageMime||null]);
+        }
+        await client.query("commit");
       }catch(e){await client.query("rollback");throw e;}finally{client.release();}
+
+      if(!free){
+        const merchantTransId=crypto.randomUUID();
+        const payment=await db.query("insert into public.slayd_payments (project_id,telegram_user_id,provider,amount_uzs,status,merchant_trans_id) values ($1,$2,'click',$3,'pending',$4) returning merchant_prepare_id",
+          [pid,uid,clickPrice,merchantTransId]);
+        const url=new URL("https://my.click.uz/services/pay");
+        url.searchParams.set("service_id",String(clickServiceId));
+        url.searchParams.set("merchant_id",String(clickMerchantId));
+        url.searchParams.set("amount",String(clickPrice));
+        url.searchParams.set("transaction_param",merchantTransId);
+        url.searchParams.set("return_url",String(webAppUrl));
+        await db.query("update public.slayd_payments set payment_url=$1 where merchant_trans_id=$2",[url.toString(),merchantTransId]);
+        await db.query("update public.slayd_projects set status='awaiting_payment',updated_at=now() where id=$1 and telegram_user_id=$2",[pid,uid]);
+        return res.json({ok:true,paymentRequired:true,paymentUrl:url.toString(),message:"Click orqali to'lovni yakunlang. To'lov tasdiqlangach PDF Telegramga yuboriladi."});
+      }
+
+      await createPdf({title,subtitle:"SLAYD AI orqali tayyorlandi",slides},pdf);
+      await bot.api.sendDocument(uid,new InputFile(pdf,name),{caption:"✅ Taqdimotingiz tayyor va Telegram chatga yuborildi!"});
+      await db.query("update public.slayd_projects set status='completed',pdf_path=$1,updated_at=now() where id=$2 and telegram_user_id=$3",[name,pid,uid]);
       res.json({ok:true,message:"PDF Telegram chatga yuborildi."});
-    }catch(e){console.error("Web finish:",e);try{await db.query("update public.slayd_projects set status='failed',error_message=$1,updated_at=now() where id=$2 and telegram_user_id=$3",[String(e.message).slice(0,1000),pid,uid]);}catch(_){}res.status(500).json({error:e.message||"PDF yaratish yoki yuborishda xatolik."});}
-    finally{fs.rmSync(dir,{recursive:true,force:true});}
+    }catch(e){
+      console.error("Web finish:",e);
+      try{await db.query("update public.slayd_projects set status='failed',error_message=$1,updated_at=now() where id=$2 and telegram_user_id=$3",[String(e.message).slice(0,1000),pid,uid]);}catch(_){}
+      res.status(500).json({error:e.message||"PDF yaratish yoki yuborishda xatolik."});
+    }finally{fs.rmSync(dir,{recursive:true,force:true});}
+  });
+
+  app.post("/api/click",async(req,res)=>{
+    const p=req.body||{};
+    const clickTransId=String(p.click_trans_id||""),serviceId=String(p.service_id||""),merchantTransId=String(p.merchant_trans_id||"");
+    const amount=Number(p.amount),action=String(p.action||""),signTime=String(p.sign_time||""),received=String(p.sign_string||"");
+    const prepareId=String(p.merchant_prepare_id||"");
+    const responseBase={click_trans_id:clickTransId,merchant_trans_id:merchantTransId,merchant_prepare_id:prepareId||null,error:0,error_note:"Success"};
+    function fail(code,note){return res.status(200).json({...responseBase,error:code,error_note:note});}
+    if(!clickServiceId||!clickSecretKey||serviceId!==String(clickServiceId))return fail(-1,"SIGN CHECK FAILED!");
+    if(!clickTransId||!merchantTransId||!Number.isFinite(amount)||!action||!signTime||!received)return fail(-8,"Error in request from CLICK");
+    if(action!=="0"&&action!=="1")return fail(-3,"Action not found");
+    if(action==="1"&&!prepareId)return fail(-8,"merchant_prepare_id is required");
+    const signature=clickTransId+serviceId+clickSecretKey+merchantTransId+(action==="1"?prepareId:"")+String(p.amount)+action+signTime;
+    const expected=crypto.createHash("md5").update(signature).digest("hex");
+    const a=Buffer.from(received.toLowerCase(),"utf8"),b=Buffer.from(expected,"utf8");
+    if(a.length!==b.length||!crypto.timingSafeEqual(a,b))return fail(-1,"SIGN CHECK FAILED!");
+    try{
+      const result=await db.query("select * from public.slayd_payments where merchant_trans_id=$1 and provider='click'",[merchantTransId]);
+      if(!result.rowCount)return fail(-5,"User does not exist");
+      const payment=result.rows[0];
+      if(Math.abs(Number(payment.amount_uzs)-amount)>0.01)return fail(-2,"Incorrect parameter amount");
+      if(payment.status==="paid"){
+        const project=await db.query("select status from public.slayd_projects where id=$1",[payment.project_id]);
+        if(project.rows[0]?.status==="paid"){try{await deliverPaidProject(payment.project_id);}catch(e){console.error("Paid PDF retry:",e);return fail(-7,"Failed to update user");}}
+        return fail(-4,"Already paid");
+      }
+      if(payment.status==="failed"||payment.status==="refunded")return fail(-9,"Transaction cancelled");
+      if(action==="0"){
+        if(payment.click_trans_id&&String(payment.click_trans_id)!==clickTransId)return fail(-8,"Another transaction is already processing");
+        await db.query("update public.slayd_payments set status='processing',click_trans_id=$1,click_paydoc_id=$2,updated_at=now() where id=$3",
+          [clickTransId,p.click_paydoc_id?Number(p.click_paydoc_id):null,payment.id]);
+        responseBase.merchant_prepare_id=String(payment.merchant_prepare_id);
+        return res.status(200).json(responseBase);
+      }
+      if(String(payment.merchant_prepare_id)!==prepareId)return fail(-6,"Transaction does not exist");
+      if(payment.click_trans_id&&String(payment.click_trans_id)!==clickTransId)return fail(-6,"Transaction does not exist");
+      if(Number(p.error||0)!==0){
+        await db.query("update public.slayd_payments set status='failed',provider_payload=$1,updated_at=now() where id=$2",
+          [JSON.stringify(p),payment.id]);
+        await db.query("update public.slayd_projects set status='failed',error_message='Click payment failed',updated_at=now() where id=$1",[payment.project_id]);
+        return res.status(200).json(responseBase);
+      }
+      await db.query("update public.slayd_payments set status='paid',click_trans_id=$1,click_paydoc_id=$2,provider_payload=$3,paid_at=now(),updated_at=now() where id=$4",
+        [clickTransId,p.click_paydoc_id?Number(p.click_paydoc_id):null,JSON.stringify(p),payment.id]);
+      await db.query("update public.slayd_projects set status='paid',updated_at=now() where id=$1",[payment.project_id]);
+      try{await deliverPaidProject(payment.project_id);}
+      catch(e){console.error("Paid PDF delivery:",e);return fail(-7,"Failed to update user");}
+      return res.status(200).json(responseBase);
+    }catch(e){console.error("Click webhook:",e);return fail(-7,"Failed to update user");}
   });
   const port=Number(process.env.PORT||3000),server=app.listen(port,"0.0.0.0",()=>console.log("SLAYD AI Web App server listening on "+port));server.on("error",e=>console.error("Web server:",e));return server;
 }
