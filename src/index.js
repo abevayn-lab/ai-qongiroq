@@ -358,11 +358,11 @@ function createPdf(data, outputPath) {
         doc.fillColor(C.white).font("Helvetica-Bold").fontSize(35).text(safe(slide.title || data.title || "Taqdimot"), 68, 183, { width: slide.imagePath ? 550 : 690, height: 120, ellipsis: true });
         if (slide.imagePath && fs.existsSync(slide.imagePath)) { try { doc.image(slide.imagePath, 675, 245, { fit: [220, 185] }); } catch (e) { console.warn("Cover image:", e.message); } }
         doc.roundedRect(70, 322, 86, 5, 2).fill(C.cyan);
-        doc.fillColor("#D5DEEF").font("Helvetica").fontSize(17).text(safe(data.subtitle || "Mavzu bo'yicha tayyorlangan taqdimot"), 70, 348, { width: 690, height: 52, ellipsis: true });
+        doc.fillColor("#D5DEEF").font("Helvetica").fontSize(17).text(safe(data.subtitle || "Mavzu bo'yicha tayyorlangan taqdimot"), 70, 348, { width: slide.imagePath ? 550 : 690, height: 52, ellipsis: true });
         slide.bullets.slice(0, 3).forEach((item, i) => {
           const y = 425 + i * 25;
           doc.circle(76, y + 7, 3).fill(C.cyan);
-          doc.fillColor("#E6ECF7").font("Helvetica").fontSize(12).text(safe(item), 90, y, { width: 650, height: 19, ellipsis: true });
+          doc.fillColor("#E6ECF7").font("Helvetica").fontSize(12).text(safe(item), 90, y, { width: slide.imagePath ? 540 : 650, height: 19, ellipsis: true });
         });
         doc.fillColor("#AAB8D0").font("Helvetica").fontSize(10).text("SLAYD AI  •  8 SLAYD  •  PDF", 70, 500);
         doc.fillColor("#AAB8D0").text("01 / 08", 820, 500, { width: 70, align: "right" });
