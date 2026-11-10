@@ -224,7 +224,7 @@ async function extractImageText(ctx) {
       const visionPayload = await visionResponse.json().catch(() => ({}));
       if (!visionResponse.ok) throw new Error("Groq Vision xatosi (" + visionResponse.status + "): " + (visionPayload.error?.message || visionResponse.statusText));
       const visionText = visionPayload.choices?.[0]?.message?.content?.trim();
-      if (visionText) return visionText;
+      if (visionText) return { text: visionText, imageBuffer: buffer };
       throw new Error("Groq Vision bo'sh javob qaytardi.");
     } catch (error) {
       console.error("Groq Vision ishlamadi:", error.message);
@@ -233,10 +233,11 @@ async function extractImageText(ctx) {
 
   if (GEMINI_API_KEY) {
     console.log("Rasm matni: Gemini zaxira orqali o'qilmoqda.");
-    return await geminiGenerate([{ role: "user", parts: [
+    const geminiText = await geminiGenerate([{ role: "user", parts: [
       { text: "Rasmdagi matnni o'qib, taqdimot uchun muhim ma'lumotlarni o'zbek tilida ajratib ber. O'qilmagan joylarni to'qima." },
       { inlineData: { mimeType: "image/jpeg", data: base64 } }
     ] }], { maxOutputTokens: 1400 });
+    return { text: geminiText, imageBuffer: buffer };
   }
   throw new Error("Rasmni o'qish uchun Groq Vision va Gemini xizmatlari javob bermadi.");
 }
@@ -319,12 +320,19 @@ function createPdf(data, outputPath) {
   });
 }
 
-async function generateAndSend(ctx, source) {
+async function generateAndSend(ctx, source, options = {}) {
   const status = await ctx.reply("⏳ Taqdimotingiz tayyorlanmoqda. Biroz kuting...");
-  const outputPath = path.join(os.tmpdir(), `slayd-ai-${ctx.from.id}-${Date.now()}.pdf`);
+  const jobId = String(ctx.from.id) + "-" + Date.now() + "-" + Math.random().toString(36).slice(2,8);
+  const outputPath = path.join(os.tmpdir(), "slayd-ai-" + jobId + ".pdf");
+  let sourceImagePath = null;
   try {
     console.log("Taqdimot: Groq asosiy, Gemini zaxira AI so'rovi boshlandi.");
     const data = await makeSlides(source);
+    if (options.imageBuffer) {
+      sourceImagePath = path.join(os.tmpdir(), "slayd-ai-source-" + jobId + ".jpg");
+      fs.writeFileSync(sourceImagePath, options.imageBuffer, { flag: "wx" });
+      data.slides[0].imagePath = sourceImagePath;
+    }
     console.log("Taqdimot: AI javobi olindi, PDF tayyorlanmoqda.");
     await createPdf(data, outputPath);
     console.log("Taqdimot: PDF tayyor.");
@@ -334,9 +342,9 @@ async function generateAndSend(ctx, source) {
   } finally {
     try { await ctx.api.deleteMessage(ctx.chat.id, status.message_id); } catch (_) {}
     if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
+    if (sourceImagePath && fs.existsSync(sourceImagePath)) fs.unlinkSync(sourceImagePath);
   }
 }
-
 bot.on("message:text", async (ctx) => {
   const text = ctx.message.text.trim();
   if (text.startsWith("/")) return;
@@ -353,7 +361,7 @@ bot.on("message:photo", async (ctx) => {
   try {
     const extracted = await extractImageText(ctx);
     const caption = ctx.message.caption || "";
-    await generateAndSend(ctx, [caption, extracted].filter(Boolean).join("\n\n"));
+    await generateAndSend(ctx, [caption, extracted.text].filter(Boolean).join("\n\n"), { imageBuffer: extracted.imageBuffer });
   } catch (error) {
     console.error(error);
     await ctx.reply("❌ Rasmni o'qishda yoki taqdimot yaratishda xatolik bo'ldi. Aniqroq rasm yuboring.");
