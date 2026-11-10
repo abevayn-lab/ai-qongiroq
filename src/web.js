@@ -160,9 +160,9 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
     if(!db)return res.status(503).json({error:"Ma'lumotlar bazasi ulanmagan."});
     const uid=Number(req.tgUser.id),pid=String(req.body?.projectId||""),name=fileName(req.body?.fileName),title=String(req.body?.title||"SLAYD AI").slice(0,160),input=req.body?.slides;
     const free=isFreeUser(uid);
-    const clickPrice=Number(slidePriceUzs);
-    const clickReady=Boolean(clickServiceId&&clickMerchantId&&clickMerchantUserId&&clickSecretKey&&Number.isSafeInteger(clickPrice)&&clickPrice>0&&webAppUrl);
-    if(!free&&!clickReady)return res.status(503).json({error:"Click hali sozlanmagan. To'lov uchun Click merchant ma'lumotlari va SLIDE_PRICE_UZS kerak."});
+    const settings=await Promise.all(["payment_card_number","payment_card_holder","payment_price_uzs","payment_review_chat_id"].map(getSetting));
+    const paymentPrice=Number(settings[2]);
+    if(!free&&!(settings[0]&&settings[1]&&Number.isSafeInteger(paymentPrice)&&paymentPrice>0&&settings[3]))return res.status(503).json({error:"To‘lov sozlamalari hali tayyor emas. Admin /admin orqali sozlashi kerak."});
     if(!/^[0-9a-f-]{36}$/i.test(pid)||!Array.isArray(input)||input.length!==8)return res.status(400).json({error:"Taqdimotda aynan 8 ta slayd bo'lishi kerak."});
     const dir=fs.mkdtempSync(path.join(os.tmpdir(),"slayd-finish-")),pdf=path.join(dir,name);
     try{
@@ -201,19 +201,10 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
       }catch(e){await client.query("rollback");throw e;}finally{client.release();}
 
       if(!free){
-        const merchantTransId=crypto.randomUUID();
-        const payment=await db.query("insert into public.slayd_payments (project_id,telegram_user_id,provider,amount_uzs,status,merchant_trans_id) values ($1,$2,'click',$3,'pending',$4) returning merchant_prepare_id",
-          [pid,uid,clickPrice,merchantTransId]);
-        const url=new URL("https://my.click.uz/services/pay");
-        url.searchParams.set("service_id",String(clickServiceId));
-        url.searchParams.set("merchant_id",String(clickMerchantId));
-        url.searchParams.set("merchant_user_id",String(clickMerchantUserId));
-        url.searchParams.set("amount",String(clickPrice));
-        url.searchParams.set("transaction_param",merchantTransId);
-        url.searchParams.set("return_url",String(webAppUrl));
-        await db.query("update public.slayd_payments set payment_url=$1 where merchant_trans_id=$2",[url.toString(),merchantTransId]);
+        const orderCode="SLD-"+crypto.randomUUID().replace(/-/g,"").slice(0,10).toUpperCase();
+        await db.query("insert into public.slayd_payments (project_id,telegram_user_id,provider,amount_uzs,status,order_code) values ($1,$2,'manual',$3,'pending',$4)",[pid,uid,paymentPrice,orderCode]);
         await db.query("update public.slayd_projects set status='awaiting_payment',updated_at=now() where id=$1 and telegram_user_id=$2",[pid,uid]);
-        return res.json({ok:true,paymentRequired:true,paymentUrl:url.toString(),message:"Click orqali to'lovni yakunlang. To'lov tasdiqlangach PDF Telegramga yuboriladi."});
+        return res.json({ok:true,paymentRequired:true,orderCode,cardNumber:settings[0],cardHolder:settings[1],priceUzs:paymentPrice,message:"Kartaga to‘lov qiling va chek rasmini Telegram botga yuboring."});
       }
 
       await createPdf({title,subtitle:"SLAYD AI orqali tayyorlandi",slides},pdf);
