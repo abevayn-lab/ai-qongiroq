@@ -91,7 +91,7 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
         await client.query("update public.slayd_projects set status='draft',updated_at=now() where id=$1 and telegram_user_id=$2",[pid,uid]);await client.query("commit");
       }catch(e){await client.query("rollback");throw e;}finally{client.release();}
       res.json({projectId:pid,title:data.title||topic,subtitle:data.subtitle||"SLAYD AI taqdimoti",slides:data.slides});
-    }catch(e){if(pid)try{await db.query("update public.slayd_projects set status='failed',error_message=$1,updated_at=now() where id=$2 and telegram_user_id=$3",[String(e.message).slice(0,1000),pid,uid]);}catch(_){}console.error("Web generate:",e);res.status(500).json({error:"Taqdimot yaratilmadi. Birozdan keyin qayta urinib ko'ring."});}
+    }catch(e){if(pid)try{await db.query("update public.slayd_projects set status='failed',error_message=$1,updated_at=now() where id=$2 and telegram_user_id=$3",[String(e.message).slice(0,1000),pid,uid]);}catch(_){}console.error("Web generate:",e);const busy=String(e.message||"").includes("navbat");res.status(busy?503:500).json({error:busy?e.message:"Taqdimot yaratilmadi. Birozdan keyin qayta urinib ko'ring."});}
   }));
   async function deliverPaidProject(projectId) {
     const claim=await db.query("update public.slayd_projects set status='generating',updated_at=now() where id=$1 and status='paid' returning *",[projectId]);
