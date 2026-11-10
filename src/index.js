@@ -1,21 +1,19 @@
 require("dotenv").config();
 
 const { Bot, InputFile } = require("grammy");
-const OpenAI = require("openai");
 const PDFDocument = require("pdfkit");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
-const { BOT_TOKEN, OPENAI_API_KEY, OPENAI_MODEL = "gpt-4o-mini" } = process.env;
+const { BOT_TOKEN, GEMINI_API_KEY, GEMINI_MODEL = "gemini-2.5-flash" } = process.env;
 
-if (!BOT_TOKEN || !OPENAI_API_KEY) {
-  console.error("BOT_TOKEN va OPENAI_API_KEY .env faylida bo'lishi kerak.");
+if (!BOT_TOKEN || !GEMINI_API_KEY) {
+  console.error("BOT_TOKEN va GEMINI_API_KEY .env faylida bo'lishi kerak.");
   process.exit(1);
 }
 
 const bot = new Bot(BOT_TOKEN);
-const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
 
 bot.command("start", async (ctx) => {
   await ctx.reply(
@@ -30,50 +28,39 @@ bot.command("help", async (ctx) => {
   await ctx.reply("Mavzuni matn ko'rinishida yuboring yoki rasm tashlang. Natija PDF formatida qaytadi.");
 });
 
+async function geminiGenerate(contents, generationConfig = {}) {
+  const url = "https://generativelanguage.googleapis.com/v1beta/models/" + GEMINI_MODEL + ":generateContent?key=" + GEMINI_API_KEY;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ contents, generationConfig: { temperature: 0.7, ...generationConfig } })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error("Gemini API xatosi (" + response.status + "): " + (payload.error?.message || response.statusText));
+  const resultText = payload.candidates?.[0]?.content?.parts?.map(part => part.text || "").join("").trim();
+  if (!resultText) throw new Error("Gemini bo'sh javob qaytardi.");
+  return resultText;
+}
+
 async function extractImageText(ctx) {
   const photos = ctx.message.photo;
   const photo = photos[photos.length - 1];
   const file = await ctx.api.getFile(photo.file_id);
-  const url = `https://api.telegram.org/file/bot${BOT_TOKEN}/${file.file_path}`;
+  const url = "https://api.telegram.org/file/bot" + BOT_TOKEN + "/" + file.file_path;
   const response = await fetch(url);
   if (!response.ok) throw new Error("Rasmni Telegramdan yuklab bo'lmadi.");
   const buffer = Buffer.from(await response.arrayBuffer());
-  const dataUrl = `data:image/jpeg;base64,${buffer.toString("base64")}`;
-
-  const result = await openai.chat.completions.create({
-    model: OPENAI_MODEL,
-    messages: [{
-      role: "user",
-      content: [
-        { type: "text", text: "Rasmdagi topshiriq yoki matnni o'qib chiq. Taqdimot uchun asosiy mavzu va muhim ma'lumotlarni o'zbek tilida qisqa va aniq ajratib ber." },
-        { type: "image_url", image_url: { url: dataUrl, detail: "high" } }
-      ]
-    }],
-    max_tokens: 1200
-  });
-  return result.choices[0]?.message?.content || "";
+  return await geminiGenerate([{ role: "user", parts: [
+    { text: "Rasmdagi matnni o'qib, taqdimot uchun muhim ma'lumotlarni o'zbek tilida ajratib ber." },
+    { inlineData: { mimeType: "image/jpeg", data: buffer.toString("base64") } }
+  ] }], { maxOutputTokens: 1200 });
 }
 
 async function makeSlides(topic) {
-  const completion = await openai.chat.completions.create({
-    model: OPENAI_MODEL,
-    response_format: { type: "json_object" },
-    messages: [
-      {
-        role: "system",
-        content: "Sen professional taqdimot muallifisan. Faqat o'zbek tilida yoz. Javobni JSON formatida qaytar: {title:string, subtitle:string, slides:[{title:string, bullets:string[], speaker_notes:string}]}. Aynan 8 ta slayd bo'lsin. Har slaydda 3-5 ta qisqa, mazmunli bullet bo'lsin. 1-slayd kirish, oxirgisi xulosa bo'lsin. Faktlarni to'qib chiqarmagin."
-      },
-      { role: "user", content: `Quyidagi mavzu asosida talaba uchun tushunarli, chiroyli va mazmunli 8 slaydli taqdimot tayyorla:\n\n${topic}` }
-    ],
-    max_tokens: 3500
-  });
-
-  const raw = completion.choices[0]?.message?.content;
-  if (!raw) throw new Error("AI taqdimot matnini yaratmadi.");
+  const prompt = 'Sen professional taqdimot muallifisan. Faqat o'zbek tilida yoz. Faqat JSON qaytar: {"title":"...","subtitle":"...","slides":[{"title":"...","bullets":["...","...","..."],"speaker_notes":"..."}]}. Aynan 8 ta slayd bo'lsin. Har slaydda 3-5 ta qisqa bullet bo'lsin. Birinchi slayd kirish, oxirgisi xulosa. Faktlarni to'qib chiqarmagin.\n\nMavzu: ' + topic;
+  const raw = await geminiGenerate([{ role: "user", parts: [{ text: prompt }] }], { responseMimeType: "application/json", maxOutputTokens: 3500 });
   const data = JSON.parse(raw);
-  if (!Array.isArray(data.slides) || data.slides.length < 6) {
-    throw new Error("AI slaydlar tuzilmasini noto'g'ri qaytardi.");
-  }
+  if (!Array.isArray(data.slides) || data.slides.length < 6) throw new Error("AI slaydlar tuzilmasini noto'g'ri qaytardi.");
   data.slides = data.slides.slice(0, 8);
   return data;
 }
