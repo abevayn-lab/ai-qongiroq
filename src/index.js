@@ -400,7 +400,15 @@ async function generateAndSend(ctx, source, options = {}) {
   const jobId = String(ctx.from.id) + "-" + Date.now() + "-" + Math.random().toString(36).slice(2,8);
   const jobDir = fs.mkdtempSync(path.join(os.tmpdir(), "slayd-bot-" + jobId + "-"));
   const outputPath = path.join(jobDir, "slayd-ai-taqdimot.pdf");
+  let projectId = null;
   try {
+    if (db) {
+      const project = await db.query(
+        "insert into public.slayd_projects (telegram_user_id,topic,file_name,input_type,image_mode,status,slide_count) values ($1,$2,$3,$4,$5,'generating',8) returning id",
+        [Number(ctx.from.id), String(source).slice(0,12000), "slayd-ai-taqdimot.pdf", options.imageBuffer ? "image" : "topic", options.imageBuffer ? "user" : "ai"]
+      );
+      projectId = project.rows[0].id;
+    }
     console.log("Taqdimot: Groq asosiy, Gemini zaxira AI so'rovi boshlandi.");
     const data = await makeSlides(source);
     if (options.imageBuffer) {
@@ -409,17 +417,42 @@ async function generateAndSend(ctx, source, options = {}) {
       data.slides[0].imagePath = sourceImagePath;
     }
     await generateSlideImages(data, jobDir);
-    console.log("Taqdimot: AI javobi olindi, PDF tayyorlanmoqda.");
+    if (db && projectId) {
+      const client = await db.connect();
+      try {
+        await client.query("begin");
+        for (let i = 0; i < data.slides.length; i++) {
+          const slide = data.slides[i];
+          const imageData = slide.imagePath && fs.existsSync(slide.imagePath) ? fs.readFileSync(slide.imagePath) : null;
+          const imageMime = slide.imagePath && slide.imagePath.toLowerCase().endsWith(".jpg") ? "image/jpeg" : (imageData ? "image/png" : null);
+          await client.query(
+            "insert into public.slayd_slides (project_id,slide_number,title,body,speaker_notes,image_data,image_mime) values ($1,$2,$3,$4,$5,$6,$7)",
+            [projectId, i + 1, slide.title, (slide.bullets || []).join("\n"), slide.speaker_notes || "", imageData, imageMime]
+          );
+        }
+        await client.query("commit");
+      } catch (error) {
+        await client.query("rollback");
+        throw error;
+      } finally {
+        client.release();
+      }
+    }
     await createPdf(data, outputPath);
     await ctx.replyWithDocument(new InputFile(outputPath, "slayd-ai-taqdimot.pdf"), {
       caption: "✅ Taqdimotingiz tayyor! SLAYD AI orqali yaratildi."
     });
+    if (db && projectId) await db.query("update public.slayd_projects set status='completed',pdf_path=$1,updated_at=now() where id=$2", ["slayd-ai-taqdimot.pdf", projectId]);
+  } catch (error) {
+    if (db && projectId) {
+      try { await db.query("update public.slayd_projects set status='failed',error_message=$1,updated_at=now() where id=$2", [String(error.message).slice(0,1000), projectId]); } catch (_) {}
+    }
+    throw error;
   } finally {
     try { await ctx.api.deleteMessage(ctx.chat.id, status.message_id); } catch (_) {}
     fs.rmSync(jobDir, { recursive: true, force: true });
   }
 }
-
 bot.on("message:text", async (ctx) => {
   if (!(await requireAccess(ctx))) return;
   if (!isFreeTester(ctx.from.id)) return ctx.reply("Oddiy foydalanuvchilar taqdimotni Web App orqali yaratib, Click orqali tolov qiladi. /webapp buyrugini bosing.");
