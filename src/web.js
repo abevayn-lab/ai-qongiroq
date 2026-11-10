@@ -48,18 +48,35 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
     }catch(e){console.error("Web channel check:",e.message);return false;}
   }
   function auth(req,res,next){try{req.tgUser=verifyTelegramInitData(req.get("x-telegram-init-data"),botToken);next();}catch(e){res.status(401).json({error:e.message});}}
-  function limit(req,res,next){const id=String(req.tgUser.id),now=Date.now(),old=(rate.get(id)||[]).filter(x=>now-x<60000);if(old.length>=4)return res.status(429).json({error:"Bir daqiqada 4 ta so'rov limiti. Biroz kuting."});old.push(now);rate.set(id,old);next();}
-  app.get("/health",(_q,res)=>res.json({ok:true,service:"slayd-ai"}));
-  app.post("/api/generate",auth,limit,async(req,res)=>{
+  function limit(req,res,next){
+    const id=String(req.tgUser.id),now=Date.now(),old=(rate.get(id)||[]).filter(x=>now-x<60000);
+    if(old.length>=4)return res.status(429).json({error:"Bir daqiqada 4 ta so'rov limiti. Biroz kuting."});
+    old.push(now);rate.set(id,old);
+    if(rate.size>5000){for(const [key,times] of rate.entries())if(!times.some(t=>now-t<60000))rate.delete(key);}
+    next();
+  }
+  const asyncRoute=fn=>(req,res,next)=>Promise.resolve(fn(req,res,next)).catch(next);
+  app.get("/health",asyncRoute(async(_q,res)=>{
+    let database="not_configured";
+    if(db){try{await db.query("select 1");database="connected";}catch(_){database="unavailable";}}
+    res.json({ok:true,service:"slayd-ai",database});
+  }));
+  app.get("/api/status",auth,asyncRoute(async(req,res)=>{
+    const member=await channelMember(Number(req.tgUser.id));
+    const clickReady=Boolean(clickServiceId&&clickMerchantId&&clickSecretKey&&Number.isSafeInteger(Number(slidePriceUzs))&&Number(slidePriceUzs)>0&&webAppUrl);
+    res.json({ok:true,channelRequired:Boolean(requiredChannel),channelMember:member,free:isFreeUser(req.tgUser.id),clickReady,priceUzs:clickReady?Number(slidePriceUzs):null});
+  }));
+  app.post("/api/generate",auth,limit,asyncRoute(async(req,res)=>{
     if(!db)return res.status(503).json({error:"Ma'lumotlar bazasi ulanmagan."});
     const topic=String(req.body?.topic||"").trim().slice(0,2000),uid=Number(req.tgUser.id);
-    if(!(await channelMember(uid)))return res.status(403).json({error:"Davom etish uchun majburiy kanalga obuna bo'ling."});
+    if(topic.length<4)return res.status(400).json({error:"Mavzuni kamida 4 ta belgida yozing."});
+    if(!(await channelMember(uid)))return res.status(403).json({error:"Davom etish uchun majburiy kanalga obuna bo'ling. Botga qaytib kanalga obuna bo'ling va qayta tekshiring."});
 
     const dailyLimit=isFreeUser(uid)?25:3;
     const daily=await db.query("select count(*)::int as n from public.slayd_projects where telegram_user_id=$1 and created_at>now()-interval '24 hours'",[uid]);
     if(Number(daily.rows[0].n)>=dailyLimit)return res.status(429).json({error:"Kunlik taqdimot limiti tugadi. Ertaga qayta urinib ko'ring."});
     const active=await db.query("select count(*)::int as n from public.slayd_projects where telegram_user_id=$1 and status in ('draft','generating','awaiting_payment','paid') and created_at>now()-interval '2 hours'",[uid]);
-    if(Number(active.rows[0].n)>=(isFreeUser(uid)?4:2))return res.status(409).json({error:"Sizda yakunlanmagan taqdimotlar bor. Avval ularni yakunlang."});    if(topic.length<4)return res.status(400).json({error:"Mavzuni kamida 4 ta belgida yozing."});
+    if(Number(active.rows[0].n)>=(isFreeUser(uid)?4:2))return res.status(409).json({error:"Sizda yakunlanmagan taqdimotlar bor. Avval ularni yakunlang."});
     let pid;
     try{
       await db.query("insert into public.slayd_users (telegram_id,username,first_name,last_name,last_seen_at) values ($1,$2,$3,$4,now()) on conflict (telegram_id) do update set username=excluded.username,first_name=excluded.first_name,last_name=excluded.last_name,last_seen_at=now()",
@@ -75,7 +92,7 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
       }catch(e){await client.query("rollback");throw e;}finally{client.release();}
       res.json({projectId:pid,title:data.title||topic,subtitle:data.subtitle||"SLAYD AI taqdimoti",slides:data.slides});
     }catch(e){if(pid)try{await db.query("update public.slayd_projects set status='failed',error_message=$1,updated_at=now() where id=$2 and telegram_user_id=$3",[String(e.message).slice(0,1000),pid,uid]);}catch(_){}console.error("Web generate:",e);res.status(500).json({error:"Taqdimot yaratilmadi. Birozdan keyin qayta urinib ko'ring."});}
-  });
+  }));
   async function deliverPaidProject(projectId) {
     const claim=await db.query("update public.slayd_projects set status='generating',updated_at=now() where id=$1 and status='paid' returning *",[projectId]);
     if(!claim.rowCount)return;
@@ -117,7 +134,7 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
     }
   }
 
-  app.post("/api/finish",auth,limit,async(req,res)=>{
+  app.post("/api/finish",auth,limit,asyncRoute(async(req,res)=>{
     if(!db)return res.status(503).json({error:"Ma'lumotlar bazasi ulanmagan."});
     const uid=Number(req.tgUser.id),pid=String(req.body?.projectId||""),name=fileName(req.body?.fileName),title=String(req.body?.title||"SLAYD AI").slice(0,160),input=req.body?.slides;
     const free=isFreeUser(uid);
@@ -185,9 +202,9 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
       try{await db.query("update public.slayd_projects set status='failed',error_message=$1,updated_at=now() where id=$2 and telegram_user_id=$3",[String(e.message).slice(0,1000),pid,uid]);}catch(_){}
       res.status(500).json({error:e.message||"PDF yaratish yoki yuborishda xatolik."});
     }finally{fs.rmSync(dir,{recursive:true,force:true});}
-  });
+  }));
 
-  app.post("/api/click",async(req,res)=>{
+  app.post("/api/click",asyncRoute(async(req,res)=>{
     const p=req.body||{};
     const clickTransId=String(p.click_trans_id||""),serviceId=String(p.service_id||""),merchantTransId=String(p.merchant_trans_id||"");
     const amount=Number(p.amount),action=String(p.action||""),signTime=String(p.sign_time||""),received=String(p.sign_string||"");
@@ -235,6 +252,11 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
       deliverPaidProject(payment.project_id).catch(e=>console.error("Paid PDF delivery queued:",e));
       return;
     }catch(e){console.error("Click webhook:",e);return fail(-7,"Failed to update user");}
+  }));
+  app.use((error,req,res,next)=>{
+    console.error("Web API unhandled error:",error);
+    if(res.headersSent)return next(error);
+    res.status(500).json({error:"Serverda kutilmagan xatolik. Birozdan keyin qayta urinib ko'ring."});
   });
   const port=Number(process.env.PORT||3000),server=app.listen(port,"0.0.0.0",()=>{
     console.log("SLAYD AI Web App server listening on "+port);
