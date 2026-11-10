@@ -262,6 +262,10 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
   });
   const port=Number(process.env.PORT||3000),server=app.listen(port,"0.0.0.0",()=>{
     console.log("SLAYD AI Web App server listening on "+port);
+    if(db)db.query("update public.slayd_projects set status='cancelled',error_message='Payment expired after 7 days',updated_at=now() where status='awaiting_payment' and created_at<now()-interval '7 days'")
+      .then(()=>db.query("update public.slayd_payments set status='failed',updated_at=now() where status in ('pending','processing') and created_at<now()-interval '7 days'"))
+      .then(()=>db.query("update public.slayd_slides set image_data=null,image_mime=null where project_id in (select id from public.slayd_projects where status in ('cancelled','failed') and created_at<now()-interval '7 days')"))
+      .catch(e=>console.error("Expired project cleanup:",e));
     if(db)db.query("select id from public.slayd_projects where status='paid' order by created_at asc limit 10")
       .then(r=>r.rows.forEach(row=>deliverPaidProject(row.id).catch(e=>console.error("Paid order recovery:",e))))
       .catch(e=>console.error("Paid order recovery scan:",e));
