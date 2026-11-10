@@ -90,13 +90,23 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
       const r=await db.query("insert into public.slayd_projects (telegram_user_id,topic,file_name,input_type,image_mode,status,slide_count) values ($1,$2,$3,'web_editor','user','generating',8) returning id",
         [uid,topic,fileName(req.body.fileName)]);pid=r.rows[0].id;
       const data=await makeSlides(topic);
-      const client=await db.connect();
+      const imageDir=fs.mkdtempSync(path.join(os.tmpdir(),"slayd-gemini-"));
       try{
-        await client.query("begin");
-        for(let i=0;i<data.slides.length;i++){const s=data.slides[i];await client.query("insert into public.slayd_slides (project_id,slide_number,title,body,speaker_notes) values ($1,$2,$3,$4,$5)",[pid,i+1,s.title,(s.bullets||[]).join("\n"),s.speaker_notes||""]);}
-        await client.query("update public.slayd_projects set status='draft',updated_at=now() where id=$1 and telegram_user_id=$2",[pid,uid]);await client.query("commit");
-      }catch(e){await client.query("rollback");throw e;}finally{client.release();}
-      res.json({projectId:pid,title:data.title||topic,subtitle:data.subtitle||"Mavzu bo‘yicha taqdimot",slides:data.slides});
+        const imageResult=generateSlideImages?await generateSlideImages({title:data.title||topic,slides:data.slides},imageDir):{generated:0,failed:0};
+        const client=await db.connect();
+        try{
+          await client.query("begin");
+          for(let i=0;i<data.slides.length;i++){
+            const slide=data.slides[i];
+            await client.query("insert into public.slayd_slides (project_id,slide_number,title,body,speaker_notes,image_data,image_mime,image_position) values ($1,$2,$3,$4,$5,$6,$7,$8)",
+              [pid,i+1,slide.title,(slide.bullets||[]).join("\n"),slide.speaker_notes||"",slide.imageData||null,slide.imageMime||null,slide.imagePosition||"right"]);
+          }
+          await client.query("update public.slayd_projects set status='draft',updated_at=now() where id=$1 and telegram_user_id=$2",[pid,uid]);
+          await client.query("commit");
+        }catch(e){await client.query("rollback");throw e;}finally{client.release();}
+        const responseSlides=data.slides.map(slide=>({...slide,imageData:slide.imageData?"data:"+(slide.imageMime||"image/png")+";base64,"+slide.imageData.toString("base64"):null}));
+        res.json({projectId:pid,title:data.title||topic,subtitle:data.subtitle||"Mavzu bo‘yicha taqdimot",slides:responseSlides,imagesGenerated:imageResult.generated,imagesFailed:imageResult.failed});
+      }finally{fs.rmSync(imageDir,{recursive:true,force:true});}
     }catch(e){if(pid)try{await db.query("update public.slayd_projects set status='failed',error_message=$1,updated_at=now() where id=$2 and telegram_user_id=$3",[String(e.message).slice(0,1000),pid,uid]);}catch(_){}console.error("Web generate:",e);const busy=String(e.message||"").includes("navbat");res.status(busy?503:500).json({error:busy?e.message:"Taqdimot yaratilmadi. Birozdan keyin qayta urinib ko'ring."});}
   }));
   async function deliverPaidProject(projectId) {
