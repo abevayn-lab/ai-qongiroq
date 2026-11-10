@@ -220,6 +220,7 @@ bot.command("id", async (ctx) => {
 bot.on("message", async (ctx, next) => {
   const origin = ctx.message?.forward_origin;
   if (origin?.type === "channel" && Number(ctx.from?.id) === Number(ADMIN_TELEGRAM_ID)) {
+    adminInputState.delete(String(ctx.from.id));
     await db.query("insert into public.slayd_settings(setting_key,setting_value,updated_by,updated_at) values('payment_review_chat_id',$1,$2,now()) on conflict(setting_key) do update set setting_value=excluded.setting_value,updated_by=excluded.updated_by,updated_at=now()",[String(origin.chat.id),Number(ctx.from.id)]);
     await ctx.reply("Chek kanali ulandi: "+(origin.chat.title||"Kanal")+" | ID: "+origin.chat.id);
     return;
