@@ -188,6 +188,18 @@ bot.command("id", async (ctx) => {
   await ctx.reply("Telegram ID raqamingiz: " + ctx.from.id + "\nBu raqamni Railway Variables ichida ADMIN_TELEGRAM_ID qiymati sifatida saqlang.");
 });
 
+// Admin kanal postini botga forward qilsa, maxfiy kanal ID sini ko'rsatadi.
+bot.on("message", async (ctx, next) => {
+  const origin = ctx.message?.forward_origin;
+  if (origin?.type === "channel" && Number(ctx.from?.id) === Number(ADMIN_TELEGRAM_ID)) {
+    await ctx.reply("📢 Kanal nomi: " + (origin.chat.title || "Noma'lum") +
+      "\\nKanal ID: " + origin.chat.id +
+      "\\nRailway Variables uchun PAYMENT_REVIEW_CHAT_ID qiymati sifatida ishlatamiz.");
+    return;
+  }
+  await next();
+});
+
 bot.command("start", async (ctx) => {
   if (!(await requireAccess(ctx))) return;
   const message = "👋 Assalomu alaykum! Men SLAYD AI.\n\n🎨 Taqdimot yaratish uchun Web App tugmasini bosing.\nMavzu kiriting, 8 slaydni tahrirlang, rasmlarni joylashtiring va PDFni Telegramda oling.";
