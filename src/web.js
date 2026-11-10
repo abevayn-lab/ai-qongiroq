@@ -72,29 +72,42 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
     }catch(e){if(pid)try{await db.query("update public.slayd_projects set status='failed',error_message=$1,updated_at=now() where id=$2 and telegram_user_id=$3",[String(e.message).slice(0,1000),pid,uid]);}catch(_){}console.error("Web generate:",e);res.status(500).json({error:"Taqdimot yaratilmadi. Birozdan keyin qayta urinib ko'ring."});}
   });
   async function deliverPaidProject(projectId) {
+    const claim=await db.query("update public.slayd_projects set status='generating',updated_at=now() where id=$1 and status='paid' returning *",[projectId]);
+    if(!claim.rowCount)return;
     const dir=fs.mkdtempSync(path.join(os.tmpdir(),"slayd-paid-"));
     try {
-      const projectResult=await db.query("select * from public.slayd_projects where id=$1",[projectId]);
-      if(!projectResult.rowCount)throw new Error("To'lov loyihasi topilmadi.");
-      const project=projectResult.rows[0];
+      const project=claim.rows[0];
       const slideResult=await db.query("select * from public.slayd_slides where project_id=$1 order by slide_number",[projectId]);
       if(!slideResult.rowCount)throw new Error("To'lov qilingan loyiha slaydlari topilmadi.");
       const slides=[];
       for(const row of slideResult.rows){
-        const slide={title:row.title,bullets:String(row.body||"").split("\n").filter(Boolean),speaker_notes:row.speaker_notes||""};
+        const slide={id:row.id,title:row.title,bullets:String(row.body||"").split("\n").filter(Boolean),speaker_notes:row.speaker_notes||""};
         if(row.image_data){
           const ext=(row.image_mime||"image/png").includes("jpeg")?"jpg":"png";
           const imagePath=path.join(dir,"slide-"+row.slide_number+"."+ext);
           fs.writeFileSync(imagePath,Buffer.from(row.image_data));
           slide.imagePath=imagePath;
+          slide.imageData=Buffer.from(row.image_data);
+          slide.imageMime=row.image_mime||"image/png";
         }
         slides.push(slide);
+      }
+      if(generateSlideImages)await generateSlideImages({title:project.topic,slides},dir);
+      for(const slide of slides){
+        if(slide.imagePath&&!slide.imageData&&fs.existsSync(slide.imagePath)){
+          slide.imageData=fs.readFileSync(slide.imagePath);
+          slide.imageMime=path.extname(slide.imagePath).toLowerCase()===".jpg"?"image/jpeg":"image/png";
+          await db.query("update public.slayd_slides set image_data=$1,image_mime=$2 where id=$3",[slide.imageData,slide.imageMime,slide.id]);
+        }
       }
       const pdfPath=path.join(dir,fileName(project.file_name));
       await createPdf({title:project.topic||slides[0].title,subtitle:"SLAYD AI orqali tayyorlandi",slides},pdfPath);
       await bot.api.sendDocument(Number(project.telegram_user_id),new InputFile(pdfPath,fileName(project.file_name)),{caption:"✅ Click to'lovi tasdiqlandi. Taqdimotingiz tayyor va Telegram chatga yuborildi!"});
       await db.query("update public.slayd_projects set status='completed',pdf_path=$1,error_message=null,updated_at=now() where id=$2",[fileName(project.file_name),projectId]);
-    } finally {
+    }catch(error){
+      await db.query("update public.slayd_projects set status='paid',error_message=$1,updated_at=now() where id=$2",[String(error.message).slice(0,1000),projectId]);
+      throw error;
+    }finally{
       fs.rmSync(dir,{recursive:true,force:true});
     }
   }
@@ -124,7 +137,7 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
         }
         slides.push(s);
       }
-      if(generateSlideImages)await generateSlideImages({title,slides},dir);
+      if(free&&generateSlideImages)await generateSlideImages({title,slides},dir);
       for(const slide of slides){
         if(!slide.imageData&&slide.imagePath&&fs.existsSync(slide.imagePath)){
           slide.imageData=fs.readFileSync(slide.imagePath);
@@ -191,7 +204,7 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
       if(Math.abs(Number(payment.amount_uzs)-amount)>0.01)return fail(-2,"Incorrect parameter amount");
       if(payment.status==="paid"){
         const project=await db.query("select status from public.slayd_projects where id=$1",[payment.project_id]);
-        if(project.rows[0]?.status==="paid"){try{await deliverPaidProject(payment.project_id);}catch(e){console.error("Paid PDF retry:",e);return fail(-7,"Failed to update user");}}
+        if(project.rows[0]?.status==="paid")deliverPaidProject(payment.project_id).catch(e=>console.error("Paid PDF retry:",e));
         return fail(-4,"Already paid");
       }
       if(payment.status==="failed"||payment.status==="refunded")return fail(-9,"Transaction cancelled");
@@ -213,11 +226,16 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
       await db.query("update public.slayd_payments set status='paid',click_trans_id=$1,click_paydoc_id=$2,provider_payload=$3,paid_at=now(),updated_at=now() where id=$4",
         [clickTransId,p.click_paydoc_id?Number(p.click_paydoc_id):null,JSON.stringify(p),payment.id]);
       await db.query("update public.slayd_projects set status='paid',updated_at=now() where id=$1",[payment.project_id]);
-      try{await deliverPaidProject(payment.project_id);}
-      catch(e){console.error("Paid PDF delivery:",e);return fail(-7,"Failed to update user");}
-      return res.status(200).json(responseBase);
+      res.status(200).json(responseBase);
+      deliverPaidProject(payment.project_id).catch(e=>console.error("Paid PDF delivery queued:",e));
+      return;
     }catch(e){console.error("Click webhook:",e);return fail(-7,"Failed to update user");}
   });
-  const port=Number(process.env.PORT||3000),server=app.listen(port,"0.0.0.0",()=>console.log("SLAYD AI Web App server listening on "+port));server.on("error",e=>console.error("Web server:",e));return server;
+  const port=Number(process.env.PORT||3000),server=app.listen(port,"0.0.0.0",()=>{
+    console.log("SLAYD AI Web App server listening on "+port);
+    if(db)db.query("select id from public.slayd_projects where status='paid' order by created_at asc limit 10")
+      .then(r=>r.rows.forEach(row=>deliverPaidProject(row.id).catch(e=>console.error("Paid order recovery:",e))))
+      .catch(e=>console.error("Paid order recovery scan:",e));
+  });server.on("error",e=>console.error("Web server:",e));return server;
 }
 module.exports={startWebApp,verifyTelegramInitData};
