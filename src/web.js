@@ -156,6 +156,32 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
   }
 
 
+
+  bot.callbackQuery(/^payok:([0-9a-f-]{36})$/i,async ctx=>{
+    if(Number(ctx.from?.id)!==Number(adminTelegramId)) return ctx.answerCallbackQuery({text:"Admin only",show_alert:true});
+    try{
+      const r=await db.query("update public.slayd_payments set status='paid',paid_at=now(),reviewed_by=$1,reviewed_at=now(),updated_at=now() where id=$2 and provider='manual' and status='pending' returning project_id,telegram_user_id,order_code",[Number(ctx.from.id),ctx.match[1]]);
+      if(!r.rowCount) return ctx.answerCallbackQuery({text:"Already reviewed"});
+      const p=r.rows[0];
+      await db.query("update public.slayd_projects set status='paid',updated_at=now() where id=$1",[p.project_id]);
+      await ctx.editMessageCaption({caption:"PAYMENT APPROVED\nOrder: "+p.order_code});
+      await ctx.answerCallbackQuery({text:"Approved"});
+      await bot.api.sendMessage(Number(p.telegram_user_id),"To‘lov tasdiqlandi. PDF tayyorlanmoqda.");
+      retryPaidDelivery(p.project_id).catch(e=>console.error(e));
+    }catch(e){console.error(e);await ctx.answerCallbackQuery({text:"Error",show_alert:true});}
+  });
+  bot.callbackQuery(/^payno:([0-9a-f-]{36})$/i,async ctx=>{
+    if(Number(ctx.from?.id)!==Number(adminTelegramId)) return ctx.answerCallbackQuery({text:"Admin only",show_alert:true});
+    try{
+      const r=await db.query("update public.slayd_payments set status='rejected',reviewed_by=$1,reviewed_at=now(),updated_at=now() where id=$2 and provider='manual' and status='pending' returning project_id,telegram_user_id,order_code",[Number(ctx.from.id),ctx.match[1]]);
+      if(!r.rowCount) return ctx.answerCallbackQuery({text:"Already reviewed"});
+      const p=r.rows[0];
+      await db.query("update public.slayd_projects set status='awaiting_payment',updated_at=now() where id=$1",[p.project_id]);
+      await ctx.editMessageCaption({caption:"RECEIPT REJECTED\nOrder: "+p.order_code});
+      await bot.api.sendMessage(Number(p.telegram_user_id),"Chek tasdiqlanmadi. Iltimos, chekni qayta yuboring.");
+      await ctx.answerCallbackQuery({text:"Rejected"});
+    }catch(e){console.error(e);await ctx.answerCallbackQuery({text:"Error",show_alert:true});}
+  });
   app.post("/api/finish",auth,limit,asyncRoute(async(req,res)=>{
     if(!db)return res.status(503).json({error:"Ma'lumotlar bazasi ulanmagan."});
     const uid=Number(req.tgUser.id),pid=String(req.body?.projectId||""),name=fileName(req.body?.fileName),title=String(req.body?.title||"SLAYD AI").slice(0,160),input=req.body?.slides;
