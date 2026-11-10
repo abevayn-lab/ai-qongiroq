@@ -17,6 +17,14 @@ if (!BOT_TOKEN || (!GROQ_API_KEY && !GEMINI_API_KEY)) {
 
 const bot = new Bot(BOT_TOKEN);
 
+function validWebAppUrl(value) {
+  try {
+    const u = new URL(String(value || ""));
+    return u.protocol === "https:" && !/your-railway-domain|example\.com/i.test(u.hostname);
+  } catch (_) { return false; }
+}
+
+
 const db = DATABASE_URL ? new Pool({
   connectionString: DATABASE_URL,
   ssl: { rejectUnauthorized: false },
@@ -124,6 +132,33 @@ bot.command("admin", async (ctx) => {
   }
 });
 
+bot.command("status", async (ctx) => {
+  if (!ADMIN_TELEGRAM_ID || Number(ctx.from?.id) !== Number(ADMIN_TELEGRAM_ID)) {
+    return ctx.reply("⛔ Bu buyruq faqat administrator uchun.");
+  }
+  let database = "❌ ulanmagan";
+  if (db) {
+    try { await db.query("select 1"); database = "✅ ulangan"; }
+    catch (error) { database = "❌ xato: " + String(error.message).slice(0, 120); }
+  }
+  const missingClick = [
+    !CLICK_SERVICE_ID && "CLICK_SERVICE_ID",
+    !CLICK_MERCHANT_ID && "CLICK_MERCHANT_ID",
+    !CLICK_SECRET_KEY && "CLICK_SECRET_KEY",
+    !Number.isSafeInteger(Number(SLIDE_PRICE_UZS)) && "SLIDE_PRICE_UZS"
+  ].filter(Boolean);
+  await ctx.reply(
+    "🔎 SLAYD AI — TEXNIK HOLAT\\n\\n" +
+    "🌐 Web App URL: " + (validWebAppUrl(WEB_APP_URL) ? "✅ sozlangan" : "❌ WEB_APP_URL kerak") + "\\n" +
+    "🗄 Supabase: " + database + "\\n" +
+    "🤖 AI: " + ((GROQ_API_KEY || GEMINI_API_KEY) ? "✅ kalit bor" : "❌ kalit yo‘q") + "\\n" +
+    "🖼 AI rasm modeli: " + (GEMINI_API_KEY ? "sozlangan (" + GEMINI_IMAGE_MODEL + ")" : "❌ GEMINI_API_KEY kerak") + "\\n" +
+    "💳 Click: " + (missingClick.length ? "❌ " + missingClick.join(", ") : "✅ sozlangan") + "\\n" +
+    "📢 Majburiy kanal: " + (REQUIRED_CHANNEL ? "yoqilgan" : "o‘chirilgan") + "\\n" +
+    "🧪 Bepul testerlar: " + freeTesterIds.size
+  );
+});
+
 bot.command("id", async (ctx) => {
   await ctx.reply("Telegram ID raqamingiz: " + ctx.from.id + "\nBu raqamni Railway Variables ichida ADMIN_TELEGRAM_ID qiymati sifatida saqlang.");
 });
@@ -131,14 +166,14 @@ bot.command("id", async (ctx) => {
 bot.command("start", async (ctx) => {
   if (!(await requireAccess(ctx))) return;
   const message = "👋 Assalomu alaykum! Men SLAYD AI.\n\n📚 Mavzuni yozing yoki Web App orqali taqdimotni tahrirlang.\n8 slaydli PDF tayyorlayman.";
-  if (WEB_APP_URL && /^https:\/\//i.test(WEB_APP_URL)) {
+  if (validWebAppUrl(WEB_APP_URL)) {
     await ctx.reply(message, { reply_markup: new InlineKeyboard().webApp("🎨 Taqdimot yaratish va tahrirlash", WEB_APP_URL) });
   } else {
     await ctx.reply(message + "\n\n⚙️ Web App uchun Railway Variables ichida WEB_APP_URL kiriting.");
   }
 });
 bot.command("webapp", async (ctx) => {
-  if (!WEB_APP_URL || !/^https:\/\//i.test(WEB_APP_URL)) return ctx.reply("Web App manzili hali sozlanmagan.");
+  if (!validWebAppUrl(WEB_APP_URL)) return ctx.reply("❌ Web App manzili sozlanmagan yoki noto‘g‘ri. Railway → Variables bo‘limida WEB_APP_URL qiymatiga xizmatning haqiqiy HTTPS domenini kiriting (masalan, https://slayd-ai-production.up.railway.app).");
   await ctx.reply("🎨 Taqdimot muharriri:", { reply_markup: new InlineKeyboard().webApp("Web Appni ochish", WEB_APP_URL) });
 });
 
