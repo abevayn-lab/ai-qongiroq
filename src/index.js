@@ -481,6 +481,9 @@ async function generateAndSend(ctx, source, options = {}) {
   let projectId = null;
   try {
     if (db) {
+      const dailyLimit = Number(ctx.from.id) === Number(ADMIN_TELEGRAM_ID) ? 100 : 25;
+      const daily = await db.query("select count(*)::int as n from public.slayd_projects where telegram_user_id=$1 and created_at>now()-interval '24 hours'", [Number(ctx.from.id)]);
+      if (Number(daily.rows[0].n) >= dailyLimit) throw new Error("Kunlik sinov taqdimotlari limiti tugadi.");
       const project = await db.query(
         "insert into public.slayd_projects (telegram_user_id,topic,file_name,input_type,image_mode,status,slide_count) values ($1,$2,$3,$4,$5,'generating',8) returning id",
         [Number(ctx.from.id), String(source).slice(0,12000), "slayd-ai-taqdimot.pdf", options.imageBuffer ? "image" : "topic", options.imageBuffer ? "user" : "ai"]
