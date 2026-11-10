@@ -311,25 +311,28 @@ async function extractImageText(ctx) {
   if (GROQ_API_KEY) {
     try {
       console.log("Rasm matni: Groq vision orqali o'qilmoqda.");
-      const visionResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: { "Authorization": "Bearer " + GROQ_API_KEY, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "qwen/qwen3.8-27b",
-          messages: [{ role: "user", content: [
-            { type: "text", text: "Rasmdagi matnni aniq o'qib chiq. Taqdimot uchun muhim ma'lumotlarni o'zbek tilida tartibli yoz. O'qilmagan joyni to'qima." },
-            { type: "image_url", image_url: { url: "data:image/jpeg;base64," + base64 } }
-          ] }],
-          temperature: 0.2,
-          max_completion_tokens: 1400
-        }),
-        signal: AbortSignal.timeout(45000)
+      const visionText = await imageQueue.run(async () => {
+        const visionResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: { "Authorization": "Bearer " + GROQ_API_KEY, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "qwen/qwen3.8-27b",
+            messages: [{ role: "user", content: [
+              { type: "text", text: "Rasmdagi matnni aniq o'qib chiq. Taqdimot uchun muhim ma'lumotlarni o'zbek tilida tartibli yoz. O'qilmagan joyni to'qima." },
+              { type: "image_url", image_url: { url: "data:image/jpeg;base64," + base64 } }
+            ] }],
+            temperature: 0.2,
+            max_completion_tokens: 1400
+          }),
+          signal: AbortSignal.timeout(45000)
+        });
+        const visionPayload = await visionResponse.json().catch(() => ({}));
+        if (!visionResponse.ok) throw new Error("Groq Vision xatosi (" + visionResponse.status + "): " + (visionPayload.error?.message || visionResponse.statusText));
+        const resultText = visionPayload.choices?.[0]?.message?.content?.trim();
+        if (!resultText) throw new Error("Groq Vision bo'sh javob qaytardi.");
+        return resultText;
       });
-      const visionPayload = await visionResponse.json().catch(() => ({}));
-      if (!visionResponse.ok) throw new Error("Groq Vision xatosi (" + visionResponse.status + "): " + (visionPayload.error?.message || visionResponse.statusText));
-      const visionText = visionPayload.choices?.[0]?.message?.content?.trim();
-      if (visionText) return { text: visionText, imageBuffer: buffer };
-      throw new Error("Groq Vision bo'sh javob qaytardi.");
+      return { text: visionText, imageBuffer: buffer };
     } catch (error) {
       console.error("Groq Vision ishlamadi:", error.message);
     }
@@ -337,7 +340,7 @@ async function extractImageText(ctx) {
 
   if (GEMINI_API_KEY) {
     console.log("Rasm matni: Gemini zaxira orqali o'qilmoqda.");
-    const geminiText = await geminiGenerate([{ role: "user", parts: [
+    const geminiText = await textQueue.run(() => geminiGenerate([{ role: "user", parts: [
       { text: "Rasmdagi matnni o'qib, taqdimot uchun muhim ma'lumotlarni o'zbek tilida ajratib ber. O'qilmagan joylarni to'qima." },
       { inlineData: { mimeType: "image/jpeg", data: base64 } }
     ] }], { maxOutputTokens: 1400 });
