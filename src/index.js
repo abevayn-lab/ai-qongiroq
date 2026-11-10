@@ -30,17 +30,45 @@ bot.command("help", async (ctx) => {
 
 async function geminiGenerate(contents, generationConfig = {}) {
   const url = "https://generativelanguage.googleapis.com/v1beta/models/" + GEMINI_MODEL + ":generateContent?key=" + GEMINI_API_KEY;
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ contents, generationConfig: { temperature: 0.4, ...generationConfig } }),
-    signal: AbortSignal.timeout(60000)
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error("Gemini API xatosi (" + response.status + "): " + (payload.error?.message || response.statusText));
-  const resultText = payload.candidates?.[0]?.content?.parts?.map(part => part.text || "").join("").trim();
-  if (!resultText) throw new Error("Gemini bo'sh javob qaytardi.");
-  return resultText;
+  const retryableStatuses = [429, 500, 502, 503, 504];
+  let lastError;
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contents, generationConfig: { temperature: 0.4, ...generationConfig } }),
+        signal: AbortSignal.timeout(30000)
+      });
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        const message = "Gemini API xatosi (" + response.status + "): " + (payload.error?.message || response.statusText);
+        if (!retryableStatuses.includes(response.status) || attempt === 3) throw new Error(message);
+        lastError = new Error(message);
+        const retryAfter = Number(response.headers.get("retry-after"));
+        const delay = Number.isFinite(retryAfter) && retryAfter > 0
+          ? Math.min(retryAfter * 1000, 8000)
+          : attempt * 2500;
+        console.warn("Gemini vaqtincha band (" + response.status + "). " + (delay / 1000) + " soniyadan keyin " + (attempt + 1) + "-urinish.");
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+
+      const resultText = payload.candidates?.[0]?.content?.parts?.map(part => part.text || "").join("").trim();
+      if (!resultText) throw new Error("Gemini bo'sh javob qaytardi.");
+      return resultText;
+    } catch (error) {
+      lastError = error;
+      if (attempt === 3 || !/fetch failed|timeout|timed out|aborted/i.test(error.message)) throw error;
+      const delay = attempt * 2500;
+      console.warn("Gemini ulanishida vaqtinchalik xato. " + (delay / 1000) + " soniyadan keyin qayta uriniladi.");
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+
+  throw lastError || new Error("Gemini bilan bog'lanib bo'lmadi.");
 }
 
 async function extractImageText(ctx) {
