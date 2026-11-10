@@ -221,7 +221,7 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
     const responseBase={click_trans_id:clickTransId,merchant_trans_id:merchantTransId,merchant_prepare_id:prepareId||null,merchant_confirm_id:prepareId||null,error:0,error_note:"Success"};
     function fail(code,note){return res.status(200).json({...responseBase,error:code,error_note:note});}
     if(!clickServiceId||!clickSecretKey||serviceId!==String(clickServiceId))return fail(-1,"SIGN CHECK FAILED!");
-    if(!clickTransId||!merchantTransId||!Number.isFinite(amount)||!action||!signTime||!received||!p.click_paydoc_id)return fail(-8,"Error in request from CLICK");
+    if(!clickTransId||!merchantTransId||!Number.isFinite(amount)||!action||!signTime||!received||!p.click_paydoc_id||p.error===undefined||p.error_note===undefined)return fail(-8,"Error in request from CLICK");
     if(action!=="0"&&action!=="1")return fail(-3,"Action not found");
     if(action==="1"&&!prepareId)return fail(-8,"merchant_prepare_id is required");
     const expected=clickSignature(p,clickSecretKey);
