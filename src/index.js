@@ -57,7 +57,7 @@ async function extractImageText(ctx) {
 }
 
 async function makeSlides(topic) {
-  const prompt = 'Sen professional taqdimot muallifisan. Faqat o'zbek tilida yoz. Faqat JSON qaytar: {"title":"...","subtitle":"...","slides":[{"title":"...","bullets":["...","...","..."],"speaker_notes":"..."}]}. Aynan 8 ta slayd bo'lsin. Har slaydda 3-5 ta qisqa bullet bo'lsin. Birinchi slayd kirish, oxirgisi xulosa. Faktlarni to'qib chiqarmagin.\n\nMavzu: ' + topic;
+  const prompt = `Sen professional taqdimot muallifisan. Faqat o'zbek tilida yoz. Faqat JSON qaytar: {"title":"...","subtitle":"...","slides":[{"title":"...","bullets":["...","...","..."],"speaker_notes":"..."}]}. Aynan 8 ta slayd bo'lsin. Har slaydda 3-5 ta qisqa bullet bo'lsin. Birinchi slayd kirish, oxirgisi xulosa. Faktlarni to'qib chiqarmagin.\n\nMavzu: ${topic}`;
   const raw = await geminiGenerate([{ role: "user", parts: [{ text: prompt }] }], { responseMimeType: "application/json", maxOutputTokens: 3500 });
   const data = JSON.parse(raw);
   if (!Array.isArray(data.slides) || data.slides.length < 6) throw new Error("AI slaydlar tuzilmasini noto'g'ri qaytardi.");
