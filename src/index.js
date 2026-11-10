@@ -487,6 +487,7 @@ async function generateAndSend(ctx, source, options = {}) {
       caption: "✅ Taqdimotingiz tayyor! SLAYD AI orqali yaratildi."
     });
     if (db && projectId) await db.query("update public.slayd_projects set status='completed',pdf_path=$1,updated_at=now() where id=$2", ["slayd-ai-taqdimot.pdf", projectId]);
+    if (db && projectId) { try { await db.query("update public.slayd_slides set image_data=null,image_mime=null where project_id=$1", [projectId]); } catch (cleanupError) { console.warn("Slide image cleanup:", cleanupError.message); } }
   } catch (error) {
     if (db && projectId) {
       try { await db.query("update public.slayd_projects set status='failed',error_message=$1,updated_at=now() where id=$2", [String(error.message).slice(0,1000), projectId]); } catch (_) {}
