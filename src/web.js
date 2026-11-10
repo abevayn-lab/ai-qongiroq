@@ -140,7 +140,7 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
     const uid=Number(req.tgUser.id),pid=String(req.body?.projectId||""),name=fileName(req.body?.fileName),title=String(req.body?.title||"SLAYD AI").slice(0,160),input=req.body?.slides;
     const free=isFreeUser(uid);
     const clickPrice=Number(slidePriceUzs);
-    const clickReady=Boolean(clickServiceId&&clickMerchantId&&clickSecretKey&&Number.isSafeInteger(clickPrice)&&clickPrice>0&&webAppUrl);
+    const clickReady=Boolean(clickServiceId&&clickMerchantId&&clickMerchantUserId&&clickSecretKey&&Number.isSafeInteger(clickPrice)&&clickPrice>0&&webAppUrl);
     if(!free&&!clickReady)return res.status(503).json({error:"Click hali sozlanmagan. To'lov uchun Click merchant ma'lumotlari va SLIDE_PRICE_UZS kerak."});
     if(!/^[0-9a-f-]{36}$/i.test(pid)||!Array.isArray(input)||input.length!==8)return res.status(400).json({error:"Taqdimotda aynan 8 ta slayd bo'lishi kerak."});
     const dir=fs.mkdtempSync(path.join(os.tmpdir(),"slayd-finish-")),pdf=path.join(dir,name);
@@ -186,6 +186,7 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
         const url=new URL("https://my.click.uz/services/pay");
         url.searchParams.set("service_id",String(clickServiceId));
         url.searchParams.set("merchant_id",String(clickMerchantId));
+        url.searchParams.set("merchant_user_id",String(clickMerchantUserId));
         url.searchParams.set("amount",String(clickPrice));
         url.searchParams.set("transaction_param",merchantTransId);
         url.searchParams.set("return_url",String(webAppUrl));
