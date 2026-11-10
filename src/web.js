@@ -228,8 +228,9 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
         const orderCode="SLD-"+crypto.randomUUID().replace(/-/g,"").slice(0,10).toUpperCase();
         await db.query("insert into public.slayd_payments (project_id,telegram_user_id,provider,amount_uzs,status,order_code,merchant_trans_id) values ($1,$2,'manual',$3,'pending',$4,$4)",[pid,uid,paymentPrice,orderCode]);
         await db.query("update public.slayd_projects set status='awaiting_payment',updated_at=now() where id=$1 and telegram_user_id=$2",[pid,uid]);
-        const paymentText="💳 KARTA ORQALI TO‘LOV\\n\\nBUYURTMA: "+orderCode+"\\nKARTA RAQAMI: "+settings[0]+"\\nKARTA EGASI: "+settings[1]+"\\nSUMMA: "+paymentPrice.toLocaleString("uz-UZ")+" so‘m\\n\\nKarta ma’lumotlarini nusxalab oling. To‘lovni amalga oshirgach, pastdagi «To‘lov qildim» tugmasini bosing.";
-        try{await bot.api.sendMessage(uid,paymentText,{reply_markup:new InlineKeyboard().text("💸 To‘lov qildim","receipt:"+orderCode)});}
+        const safeHolder=String(settings[1]).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+        const paymentText="💳 <b>KARTA ORQALI TO‘LOV</b>\\n\\n<b>BUYURTMA:</b> "+orderCode+"\\n<b>KARTA RAQAMI:</b> <code>"+settings[0]+"</code>\\n<b>KARTA EGASI:</b> "+safeHolder+"\\n<b>SUMMA:</b> "+paymentPrice.toLocaleString("uz-UZ")+" so‘m\\n\\nKarta raqamini bosib nusxalashingiz yoki ustiga bosib ushlab turib ko‘chirishingiz mumkin. To‘lovni amalga oshirgach, pastdagi «To‘lov qildim» tugmasini bosing.";
+        try{await bot.api.sendMessage(uid,paymentText,{parse_mode:"HTML",reply_markup:new InlineKeyboard().text("💸 To‘lov qildim","receipt:"+orderCode)});}
         catch(sendError){console.error("Payment details message:",sendError.message);}
         return res.json({ok:true,paymentRequired:true,orderCode,cardNumber:settings[0],cardHolder:settings[1],priceUzs:paymentPrice,message:"Loyiha tayyor. To‘lov ma’lumotlari Telegram bot chatiga yuborildi."});
       }
