@@ -46,6 +46,7 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
   const rate=new Map();
   const freeIds=new Set(String(freeTesterIds||"").split(",").map(x=>x.trim()).filter(Boolean));
   function isFreeUser(id){return Number(id)===Number(adminTelegramId)||freeIds.has(String(id));}
+  async function getSetting(key){const r=await db.query("select setting_value from public.slayd_settings where setting_key=$1",[key]);return r.rows[0]?.setting_value||"";}
   async function channelMember(id){
     if(!requiredChannel)return true;
     try{
@@ -69,8 +70,9 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
   }));
   app.get("/api/status",auth,asyncRoute(async(req,res)=>{
     const member=await channelMember(Number(req.tgUser.id));
-    const clickReady=Boolean(clickServiceId&&clickMerchantId&&clickMerchantUserId&&clickSecretKey&&Number.isSafeInteger(Number(slidePriceUzs))&&Number(slidePriceUzs)>0&&webAppUrl);
-    res.json({ok:true,channelRequired:Boolean(requiredChannel),channelMember:member,free:isFreeUser(req.tgUser.id),clickReady,priceUzs:clickReady?Number(slidePriceUzs):null});
+    const values=await Promise.all(["payment_card_number","payment_card_holder","payment_price_uzs","payment_review_chat_id"].map(getSetting));
+    const configured=Boolean(values[0]&&values[1]&&Number.isSafeInteger(Number(values[2]))&&Number(values[2])>0&&values[3]);
+    res.json({ok:true,channelRequired:Boolean(requiredChannel),channelMember:member,free:isFreeUser(req.tgUser.id),paymentConfigured:configured,priceUzs:configured?Number(values[2]):null});
   }));
   app.post("/api/generate",auth,limit,asyncRoute(async(req,res)=>{
     if(!db)return res.status(503).json({error:"Ma'lumotlar bazasi ulanmagan."});
