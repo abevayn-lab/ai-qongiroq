@@ -69,18 +69,22 @@ bot.command("admin", async (ctx) => {
     const s = result.rows[0];
     await ctx.reply(
       "📊 SLAYD AI — ADMIN PANEL\\n\\n" +
-      "👥 Jami foydalanuvchilar: " + s.users_total + "\\n" +
-      "🆕 Bugun qo‘shilganlar: " + s.users_today + "\\n" +
-      "📄 Jami buyurtmalar: " + s.projects_total + "\\n" +
-      "📅 Bugungi buyurtmalar: " + s.projects_today + "\\n" +
-      "✅ Tayyor PDF: " + s.projects_completed + "\\n" +
-      "❌ Xatolik: " + s.projects_failed + "\\n" +
+      "👥 Jami foydalanuvchilar: " + s.users_total + "\n" +
+      "🆕 Bugun qo‘shilganlar: " + s.users_today + "\n" +
+      "📄 Jami buyurtmalar: " + s.projects_total + "\n" +
+      "📅 Bugungi buyurtmalar: " + s.projects_today + "\n" +
+      "✅ Tayyor PDF: " + s.projects_completed + "\n" +
+      "❌ Xatolik: " + s.projects_failed + "\n" +
       "💰 Tasdiqlangan tushum: " + Number(s.revenue_uzs).toLocaleString("uz-UZ") + " so‘m"
     );
   } catch (error) {
     console.error("Admin statistika xatosi:", error);
     await ctx.reply("❌ Statistikani olishda xatolik. Baza jadvallarini tekshiring.");
   }
+});
+
+bot.command("id", async (ctx) => {
+  await ctx.reply("Telegram ID raqamingiz: " + ctx.from.id + "\\nBu raqamni Railway Variables ichida ADMIN_TELEGRAM_ID qiymati sifatida saqlang.");
 });
 
 bot.command("start", async (ctx) => {
