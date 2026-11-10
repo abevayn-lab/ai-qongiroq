@@ -8,7 +8,7 @@ const path = require("path");
 const { startWebApp } = require("./web");
 const { Pool } = require("pg");
 
-const { BOT_TOKEN, GROQ_API_KEY, GROQ_MODEL = "openai/gpt-oss-120b", GEMINI_API_KEY, GEMINI_MODEL = "gemini-3.8-flash", GEMINI_IMAGE_MODEL = "gemini-3.1-flash-lite-image", DATABASE_URL, ADMIN_TELEGRAM_ID, WEB_APP_URL } = process.env;
+const { BOT_TOKEN, GROQ_API_KEY, GROQ_MODEL = "openai/gpt-oss-120b", GEMINI_API_KEY, GEMINI_MODEL = "gemini-3.8-flash", GEMINI_IMAGE_MODEL = "gemini-3.1-flash-lite-image", DATABASE_URL, ADMIN_TELEGRAM_ID, WEB_APP_URL, REQUIRED_CHANNEL, REQUIRED_CHANNEL_URL, FREE_TESTER_IDS = "" } = process.env;
 
 if (!BOT_TOKEN || (!GROQ_API_KEY && !GEMINI_API_KEY)) {
   console.error("BOT_TOKEN va kamida bitta AI API kaliti kerak.");
@@ -50,6 +50,44 @@ bot.use(async (ctx, next) => {
   await next();
 });
 
+const freeTesterIds = new Set(FREE_TESTER_IDS.split(",").map(x => x.trim()).filter(Boolean));
+function isFreeTester(userId) {
+  return Number(userId) === Number(ADMIN_TELEGRAM_ID) || freeTesterIds.has(String(userId));
+}
+async function isChannelMember(userId) {
+  if (!REQUIRED_CHANNEL) return true;
+  try {
+    const member = await bot.api.getChatMember(REQUIRED_CHANNEL, userId);
+    return ["creator", "administrator", "member"].includes(member.status) || (member.status === "restricted" && member.is_member === true);
+  } catch (error) {
+    console.error("Kanal obunasini tekshirish xatosi:", error.message);
+    return false;
+  }
+}
+async function requireAccess(ctx) {
+  if (!isFreeTester(ctx.from?.id)) {
+    await ctx.reply("💳 Hozircha sinov rejimi. Bepul sinovga faqat admin va ruxsat berilgan test akkauntlari kira oladi. Click to'lovi ulanmoqda.");
+    return false;
+  }
+  if (!(await isChannelMember(ctx.from.id))) {
+    const url = REQUIRED_CHANNEL_URL || (REQUIRED_CHANNEL.startsWith("@") ? "https://t.me/" + REQUIRED_CHANNEL.slice(1) : "");
+    const keyboard = new InlineKeyboard();
+    if (url) keyboard.url("📢 Kanalga obuna bo'lish", url).row();
+    keyboard.text("🔄 Obunani tekshirish", "check_subscription");
+    await ctx.reply("Davom etish uchun kanalga obuna bo'ling, keyin tekshirish tugmasini bosing.", { reply_markup: keyboard });
+    return false;
+  }
+  return true;
+}
+bot.callbackQuery("check_subscription", async (ctx) => {
+  if (await isChannelMember(ctx.from.id)) {
+    await ctx.answerCallbackQuery({ text: "Obuna tasdiqlandi. Endi botdan foydalanishingiz mumkin." });
+    await ctx.reply("✅ Obuna tasdiqlandi. Mavzuni yuboring yoki /webapp buyrug'ini bosing.");
+  } else {
+    await ctx.answerCallbackQuery({ text: "Kanalga obuna bo'lish hali aniqlanmadi.", show_alert: true });
+  }
+});
+
 bot.command("admin", async (ctx) => {
   const adminId = ADMIN_TELEGRAM_ID ? Number(ADMIN_TELEGRAM_ID) : null;
   if (!adminId || Number(ctx.from?.id) !== adminId) {
@@ -89,6 +127,7 @@ bot.command("id", async (ctx) => {
 });
 
 bot.command("start", async (ctx) => {
+  if (!(await requireAccess(ctx))) return;
   const message = "👋 Assalomu alaykum! Men SLAYD AI.\n\n📚 Mavzuni yozing yoki Web App orqali taqdimotni tahrirlang.\n8 slaydli PDF tayyorlayman.";
   if (WEB_APP_URL && /^https:\/\//i.test(WEB_APP_URL)) {
     await ctx.reply(message, { reply_markup: new InlineKeyboard().webApp("🎨 Taqdimot yaratish va tahrirlash", WEB_APP_URL) });
@@ -386,6 +425,7 @@ async function generateAndSend(ctx, source, options = {}) {
 }
 
 bot.on("message:text", async (ctx) => {
+  if (!(await requireAccess(ctx))) return;
   const text = ctx.message.text.trim();
   if (text.startsWith("/")) return;
   if (text.length < 4) return ctx.reply("Mavzuni biroz batafsilroq yozing.");
@@ -398,6 +438,7 @@ bot.on("message:text", async (ctx) => {
 });
 
 bot.on("message:photo", async (ctx) => {
+  if (!(await requireAccess(ctx))) return;
   try {
     const extracted = await extractImageText(ctx);
     const caption = ctx.message.caption || "";
@@ -409,6 +450,6 @@ bot.on("message:photo", async (ctx) => {
 });
 
 bot.catch((error) => console.error("Bot xatosi:", error));
-startWebApp({ bot, db, makeSlides, createPdf, generateSlideImages, InputFile, botToken: BOT_TOKEN });
+startWebApp({ bot, db, makeSlides, createPdf, generateSlideImages, InputFile, botToken: BOT_TOKEN, requiredChannel: REQUIRED_CHANNEL, freeTesterIds: FREE_TESTER_IDS, adminTelegramId: ADMIN_TELEGRAM_ID });
 bot.start();
 console.log("SLAYD AI bot ishga tushdi.");
