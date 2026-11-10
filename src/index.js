@@ -454,7 +454,7 @@ async function generateSlideImages(data, outputDir) {
 
 function createPdf(data, outputPath) {
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: [960, 540], margin: 0, info: { Title: data.title || "SLAYD AI taqdimoti", Author: "SLAYD AI" } });
+    const doc = new PDFDocument({ size: [960, 540], margin: 0, info: { Title: data.title || "Taqdimot", Author: "Taqdimot" } });
     const stream = fs.createWriteStream(outputPath);
     doc.pipe(stream);
     const C = { ink:"#182230", muted:"#667085", blue:"#315EFB", teal:"#16A6A6", paper:"#FFFFFF", soft:"#F4F7FC", line:"#E7ECF3", pale:"#EEF3FF", paleTeal:"#EAF8F7", white:"#FFFFFF" };
@@ -509,7 +509,7 @@ function createPdf(data, outputPath) {
         });
         if(image) addImage(slide,imageLeft?58:650,184,242,278);
         doc.moveTo(58,492).lineTo(902,492).strokeColor(C.line).lineWidth(1).stroke();
-        doc.fillColor(C.muted).font("Helvetica").fontSize(9).text("SLAYD AI  •  O'QUV TAQDIMOTI",58,505);
+        doc.fillColor(C.muted).font("Helvetica").fontSize(9).text("O‘QUV TAQDIMOTI",58,505);
         doc.fillColor(C.muted).font("Helvetica-Bold").fontSize(10).text(String(index+1).padStart(2,"0")+" / "+String(data.slides.length).padStart(2,"0"),820,503,{width:80,align:"right"});
       }
     });
