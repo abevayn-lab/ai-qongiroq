@@ -131,7 +131,7 @@ bot.on('message:text', async (ctx,next)=>{
   const value=ctx.message.text.trim();
   if(key==='payment_price_uzs'&&(!/^\\d+$/.test(value)||Number(value)<=0)) return ctx.reply('Narxni musbat raqamda kiriting.');
   if(key==='payment_card_number'&&!/^[0-9 ]{12,25}$/.test(value)) return ctx.reply('Karta raqamini tekshirib qayta yuboring.');
-  if(key==='payment_review_chat_id') return ctx.reply('Kanal postini forward qiling.');
+  if(key==='payment_review_chat_id') return next();
   await db.query('insert into public.slayd_settings(setting_key,setting_value,updated_by,updated_at) values($1,$2,$3,now()) on conflict(setting_key) do update set setting_value=excluded.setting_value,updated_by=excluded.updated_by,updated_at=now()',[key,value,Number(ctx.from.id)]);
   adminInputState.delete(String(ctx.from.id)); await ctx.reply('Saqlandi. /admin orqali davom eting.');
 });
