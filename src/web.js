@@ -81,8 +81,7 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
     if(!(await channelMember(uid)))return res.status(403).json({error:"Davom etish uchun majburiy kanalga obuna bo'ling. Botga qaytib kanalga obuna bo'ling va qayta tekshiring."});
 
     // Per-user daily generation cap removed; request throttling and active-project limits remain.
-    const active=await db.query("select count(*)::int as n from public.slayd_projects where telegram_user_id=$1 and status in ('draft','generating','awaiting_payment','paid') and created_at>now()-interval '2 hours'",[uid]);
-    if(Number(active.rows[0].n)>=(isFreeUser(uid)?4:2))return res.status(409).json({error:"Sizda yakunlanmagan taqdimotlar bor. Avval ularni yakunlang."});
+    // Allow multiple drafts/orders per user; old unfinished projects must not block new presentations.
     let pid;
     try{
       await db.query("insert into public.slayd_users (telegram_id,username,first_name,last_name,last_seen_at) values ($1,$2,$3,$4,now()) on conflict (telegram_id) do update set username=excluded.username,first_name=excluded.first_name,last_name=excluded.last_name,last_seen_at=now()",
