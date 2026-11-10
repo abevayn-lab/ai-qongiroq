@@ -606,6 +606,17 @@ bot.on("message:text", async (ctx) => {
   }
 });
 
+bot.callbackQuery(/^receipt:(SLD-[A-Z0-9]+)$/i,async ctx=>{
+ try{
+  if(!db)return ctx.answerCallbackQuery({text:"Baza ulanmagan.",show_alert:true});
+  const order=ctx.match[1];
+  const r=await db.query("select order_code from public.slayd_payments where order_code=$1 and telegram_user_id=$2 and provider='manual' and status='pending' order by created_at desc limit 1",[order,Number(ctx.from.id)]);
+  if(!r.rowCount)return ctx.answerCallbackQuery({text:"Bu buyurtma topilmadi yoki allaqachon ko‘rib chiqilgan.",show_alert:true});
+  await ctx.answerCallbackQuery({text:"Chek yuborish mumkin."});
+  await ctx.reply("📸 Endi to‘lov chekini rasm qilib shu chatga yuboring.\\n\\nChek adminga tekshirish uchun yuboriladi. Admin tasdiqlagach, PDF faylingiz shu bot chatiga keladi.");
+ }catch(e){console.error("Receipt prompt:",e);await ctx.answerCallbackQuery({text:"Xatolik. Qayta urinib ko‘ring.",show_alert:true});}
+});
+
 bot.on("message:photo", async ctx => {
  if(!(await requireAccess(ctx))) return;
  if(!db) return ctx.reply("Baza ulanmagan.");
@@ -620,7 +631,7 @@ bot.on("message:photo", async ctx => {
    const kb=new InlineKeyboard().text("Tasdiqlash","payok:"+p.id).text("Rad etish","payno:"+p.id);
    const sent=await bot.api.sendPhoto(ch.rows[0].setting_value,file,{caption:"YANGI CHEK\nBuyurtma: "+(p.order_code||p.id)+"\nFoydalanuvchi: "+ctx.from.id+"\nSumma: "+p.amount_uzs+" so‘m",reply_markup:kb});
    await db.query("update public.slayd_payments set review_chat_id=$1,review_message_id=$2 where id=$3",[ch.rows[0].setting_value,sent.message_id,p.id]);
-   return ctx.reply("Chek adminga yuborildi. Tasdiqlangach PDF keladi.");
+   return ctx.reply("✅ Buyurtmangiz qabul qilindi! Chek admin tekshiruviga yuborildi. Admin tasdiqlagandan so‘ng PDF faylingiz shu Telegram bot chatiga yuboriladi.");
   } catch(e){console.error("Receipt:",e);return ctx.reply("Chek yuborilmadi. Qayta urinib ko‘ring.");}
  }
  const extracted=await extractImageText(ctx);
