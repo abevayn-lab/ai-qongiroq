@@ -8,7 +8,7 @@ const path = require("path");
 const { startWebApp } = require("./web");
 const { Pool } = require("pg");
 
-const { BOT_TOKEN, GROQ_API_KEY, GROQ_MODEL = "openai/gpt-oss-120b", GEMINI_API_KEY, GEMINI_MODEL = "gemini-3.8-flash", DATABASE_URL, ADMIN_TELEGRAM_ID, WEB_APP_URL } = process.env;
+const { BOT_TOKEN, GROQ_API_KEY, GROQ_MODEL = "openai/gpt-oss-120b", GEMINI_API_KEY, GEMINI_MODEL = "gemini-3.8-flash", GEMINI_IMAGE_MODEL = "gemini-3.1-flash-lite-image", DATABASE_URL, ADMIN_TELEGRAM_ID, WEB_APP_URL } = process.env;
 
 if (!BOT_TOKEN || (!GROQ_API_KEY && !GEMINI_API_KEY)) {
   console.error("BOT_TOKEN va kamida bitta AI API kaliti kerak.");
@@ -262,6 +262,46 @@ async function makeSlides(topic) {
   return data;
 }
 
+
+async function generateSlideImages(data, outputDir) {
+  if (!GEMINI_API_KEY) {
+    console.warn("AI rasmlar yaratilmaydi: GEMINI_API_KEY sozlanmagan.");
+    return;
+  }
+  const targets = [0, 2, 4, 6].filter(i => data.slides[i] && !data.slides[i].imagePath);
+  let cursor = 0;
+  async function worker() {
+    while (cursor < targets.length) {
+      const index = targets[cursor++];
+      const slide = data.slides[index];
+      const prompt = "Create a polished, realistic editorial illustration or photograph for a student presentation slide. No text, no letters, no captions, no logos, no watermark. Topic: " +
+        String(data.title || "Education") + ". Slide: " + slide.title + ". Key ideas: " + (slide.bullets || []).join("; ") +
+        ". Landscape 16:9 composition, clean professional lighting, clear focal subject, visually informative and appropriate for an academic presentation.";
+      try {
+        const response = await fetch("https://generativelanguage.googleapis.com/v1/models/" + GEMINI_IMAGE_MODEL + ":generateContent", {
+          method: "POST",
+          headers: { "x-goog-api-key": GEMINI_API_KEY, "Content-Type": "application/json" },
+          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+          signal: AbortSignal.timeout(60000)
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error("Gemini Image API (" + response.status + "): " + (payload.error?.message || response.statusText));
+        const parts = payload.candidates?.[0]?.content?.parts || [];
+        const imagePart = parts.find(part => part.inlineData?.data);
+        if (!imagePart) throw new Error("Rasm modeli rasm qaytarmadi.");
+        const mime = imagePart.inlineData.mimeType || "image/png";
+        const ext = mime.includes("jpeg") ? "jpg" : "png";
+        const imagePath = path.join(outputDir, "ai-slide-" + (index + 1) + "." + ext);
+        fs.writeFileSync(imagePath, Buffer.from(imagePart.inlineData.data, "base64"), { flag: "wx" });
+        slide.imagePath = imagePath;
+      } catch (error) {
+        console.warn("AI rasm yaratilmadi, slayd matn bilan qoladi (" + (index + 1) + "):", error.message);
+      }
+    }
+  }
+  await Promise.all([worker(), worker()]);
+}
+
 function createPdf(data, outputPath) {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: [960, 540], margin: 0, info: { Title: data.title || "SLAYD AI taqdimoti", Author: "SLAYD AI" } });
@@ -323,28 +363,28 @@ function createPdf(data, outputPath) {
 async function generateAndSend(ctx, source, options = {}) {
   const status = await ctx.reply("⏳ Taqdimotingiz tayyorlanmoqda. Biroz kuting...");
   const jobId = String(ctx.from.id) + "-" + Date.now() + "-" + Math.random().toString(36).slice(2,8);
-  const outputPath = path.join(os.tmpdir(), "slayd-ai-" + jobId + ".pdf");
-  let sourceImagePath = null;
+  const jobDir = fs.mkdtempSync(path.join(os.tmpdir(), "slayd-bot-" + jobId + "-"));
+  const outputPath = path.join(jobDir, "slayd-ai-taqdimot.pdf");
   try {
     console.log("Taqdimot: Groq asosiy, Gemini zaxira AI so'rovi boshlandi.");
     const data = await makeSlides(source);
     if (options.imageBuffer) {
-      sourceImagePath = path.join(os.tmpdir(), "slayd-ai-source-" + jobId + ".jpg");
+      const sourceImagePath = path.join(jobDir, "telegram-source.jpg");
       fs.writeFileSync(sourceImagePath, options.imageBuffer, { flag: "wx" });
       data.slides[0].imagePath = sourceImagePath;
     }
+    await generateSlideImages(data, jobDir);
     console.log("Taqdimot: AI javobi olindi, PDF tayyorlanmoqda.");
     await createPdf(data, outputPath);
-    console.log("Taqdimot: PDF tayyor.");
     await ctx.replyWithDocument(new InputFile(outputPath, "slayd-ai-taqdimot.pdf"), {
       caption: "✅ Taqdimotingiz tayyor! SLAYD AI orqali yaratildi."
     });
   } finally {
     try { await ctx.api.deleteMessage(ctx.chat.id, status.message_id); } catch (_) {}
-    if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
-    if (sourceImagePath && fs.existsSync(sourceImagePath)) fs.unlinkSync(sourceImagePath);
+    fs.rmSync(jobDir, { recursive: true, force: true });
   }
 }
+
 bot.on("message:text", async (ctx) => {
   const text = ctx.message.text.trim();
   if (text.startsWith("/")) return;
