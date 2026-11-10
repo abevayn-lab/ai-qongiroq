@@ -129,7 +129,7 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
       }
       const pdfPath=path.join(dir,fileName(project.file_name));
       await createPdf({title:project.topic||slides[0].title,subtitle:"",slides},pdfPath);
-      await bot.api.sendDocument(Number(project.telegram_user_id),new InputFile(pdfPath,fileName(project.file_name)),{caption:"✅ Click to'lovi tasdiqlandi. Taqdimotingiz tayyor va Telegram chatga yuborildi!"});
+      await bot.api.sendDocument(Number(project.telegram_user_id),new InputFile(pdfPath,fileName(project.file_name)),{caption:"✅ To‘lov tasdiqlandi. PDF taqdimotingiz tayyor va shu bot chatiga yuborildi!"});
       await db.query("update public.slayd_projects set status='completed',pdf_path=$1,error_message=null,updated_at=now() where id=$2",[fileName(project.file_name),projectId]);
       try{await db.query("update public.slayd_slides set image_data=null,image_mime=null where project_id=$1",[projectId]);}catch(cleanupError){console.warn("Paid image cleanup:",cleanupError.message);}
     }catch(error){
@@ -163,7 +163,7 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
       await db.query("update public.slayd_projects set status='paid',updated_at=now() where id=$1",[p.project_id]);
       await ctx.editMessageCaption({caption:"PAYMENT APPROVED\nOrder: "+p.order_code});
       await ctx.answerCallbackQuery({text:"Approved"});
-      await bot.api.sendMessage(Number(p.telegram_user_id),"To‘lov tasdiqlandi. PDF tayyorlanmoqda.");
+      await bot.api.sendMessage(Number(p.telegram_user_id),"✅ To‘lovingiz tasdiqlandi! PDF faylingiz hozir tayyorlanadi va shu Telegram bot chatiga yuboriladi. Chatni tekshirib turing.");
       retryPaidDelivery(p.project_id).catch(e=>console.error(e));
     }catch(e){console.error(e);await ctx.answerCallbackQuery({text:"Error",show_alert:true});}
   });
