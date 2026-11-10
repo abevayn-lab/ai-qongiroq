@@ -21,6 +21,12 @@ function verifyTelegramInitData(initData, token) {
   if (!Number.isSafeInteger(Number(user.id))) throw new Error("Telegram foydalanuvchisi aniqlanmadi.");
   return user;
 }
+function clickSignature(p, secret) {
+  const action=String(p.action||"");
+  const raw=String(p.click_trans_id||"")+String(p.service_id||"")+String(secret||"")+String(p.merchant_trans_id||"")+
+    (action==="1"?String(p.merchant_prepare_id||""):"")+String(p.amount)+action+String(p.sign_time||"");
+  return crypto.createHash("md5").update(raw).digest("hex");
+}
 function fileName(value) {
   const s = String(value || "slayd-ai-taqdimot")
     .replace(/\.pdf$/i, "")
@@ -218,8 +224,7 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
     if(!clickTransId||!merchantTransId||!Number.isFinite(amount)||!action||!signTime||!received||!p.click_paydoc_id)return fail(-8,"Error in request from CLICK");
     if(action!=="0"&&action!=="1")return fail(-3,"Action not found");
     if(action==="1"&&!prepareId)return fail(-8,"merchant_prepare_id is required");
-    const signature=clickTransId+serviceId+clickSecretKey+merchantTransId+(action==="1"?prepareId:"")+String(p.amount)+action+signTime;
-    const expected=crypto.createHash("md5").update(signature).digest("hex");
+    const expected=clickSignature(p,clickSecretKey);
     const a=Buffer.from(received.toLowerCase(),"utf8"),b=Buffer.from(expected,"utf8");
     if(a.length!==b.length||!crypto.timingSafeEqual(a,b))return fail(-1,"SIGN CHECK FAILED!");
     try{
@@ -275,4 +280,4 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
 
   });server.on("error",e=>console.error("Web server:",e));return server;
 }
-module.exports={startWebApp,verifyTelegramInitData};
+module.exports={startWebApp,verifyTelegramInitData,clickSignature,fileName};
