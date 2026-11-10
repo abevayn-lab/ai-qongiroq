@@ -6,10 +6,10 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
-const { BOT_TOKEN, GEMINI_API_KEY, GEMINI_MODEL = "gemini-3.8-flash" } = process.env;
+const { BOT_TOKEN, GROQ_API_KEY, GROQ_MODEL = "openai/gpt-oss-120b", GEMINI_API_KEY, GEMINI_MODEL = "gemini-3.8-flash" } = process.env;
 
-if (!BOT_TOKEN || !GEMINI_API_KEY) {
-  console.error("BOT_TOKEN va GEMINI_API_KEY .env faylida bo'lishi kerak.");
+if (!BOT_TOKEN || (!GROQ_API_KEY && !GEMINI_API_KEY)) {
+  console.error("BOT_TOKEN va kamida bitta AI API kaliti kerak.");
   process.exit(1);
 }
 
@@ -29,62 +29,72 @@ bot.command("help", async (ctx) => {
 });
 
 async function geminiGenerate(contents, generationConfig = {}) {
-  const models = [...new Set([GEMINI_MODEL, "gemini-3.5-flash-lite"])];
-  const retryableStatuses = [429, 500, 502, 503, 504];
-  let lastError;
+  if (!GEMINI_API_KEY) throw new Error("Gemini API kaliti sozlanmagan.");
+  const url = "https://generativelanguage.googleapis.com/v1beta/models/" + GEMINI_MODEL + ":generateContent?key=" + GEMINI_API_KEY;
+  const response = await fetch(url, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ contents, generationConfig: { temperature: 0.35, ...generationConfig } }),
+    signal: AbortSignal.timeout(45000)
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error("Gemini API xatosi (" + response.status + "): " + (payload.error?.message || response.statusText));
+  const resultText = payload.candidates?.[0]?.content?.parts?.map(part => part.text || "").join("").trim();
+  if (!resultText) throw new Error("Gemini bo'sh javob qaytardi.");
+  return resultText;
+}
 
-  for (const model of models) {
-    const url = "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent?key=" + GEMINI_API_KEY;
-    for (let attempt = 1; attempt <= 3; attempt++) {
+async function groqGenerate(prompt, generationConfig = {}) {
+  if (!GROQ_API_KEY) throw new Error("Groq API kaliti sozlanmagan.");
+  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: { "Authorization": "Bearer " + GROQ_API_KEY, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: GROQ_MODEL,
+      messages: [
+        { role: "system", content: "Sen professional o'zbek tilidagi taqdimot muallifisan." },
+        { role: "user", content: prompt }
+      ],
+      temperature: 0.35,
+      max_completion_tokens: generationConfig.maxOutputTokens || 3500,
+      response_format: generationConfig.responseMimeType === "application/json" ? { type: "json_object" } : undefined
+    }),
+    signal: AbortSignal.timeout(45000)
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error("Groq API xatosi (" + response.status + "): " + (payload.error?.message || response.statusText));
+  const result = payload.choices?.[0]?.message?.content?.trim();
+  if (!result) throw new Error("Groq bo'sh javob qaytardi.");
+  return result;
+}
+
+async function generateText(prompt, generationConfig = {}) {
+  const errors = [];
+  if (GROQ_API_KEY) {
+    for (let attempt = 1; attempt <= 2; attempt++) {
       try {
-        console.log("Gemini modeli: " + model + ", urinish: " + attempt);
-        const response = await fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ contents, generationConfig: { temperature: 0.4, ...generationConfig } }),
-          signal: AbortSignal.timeout(30000)
-        });
-        const payload = await response.json().catch(() => ({}));
-
-        if (!response.ok) {
-          const message = "Gemini API xatosi (" + response.status + ", " + model + "): " + (payload.error?.message || response.statusText);
-          lastError = new Error(message);
-          if (!retryableStatuses.includes(response.status)) throw lastError;
-          if (attempt === 3) {
-            if (response.status === 503 && model !== models[models.length - 1]) {
-              console.warn("Asosiy Gemini modeli band. Zaxira modelga o'tilmoqda.");
-              break;
-            }
-            throw lastError;
-          }
-          const retryAfter = Number(response.headers.get("retry-after"));
-          const delay = Number.isFinite(retryAfter) && retryAfter > 0
-            ? Math.min(retryAfter * 1000, 8000)
-            : attempt * 2500;
-          console.warn("Gemini vaqtincha band (" + response.status + "). " + (delay / 1000) + " soniyadan keyin qayta uriniladi.");
-          await new Promise(resolve => setTimeout(resolve, delay));
+        console.log("AI: Groq (" + GROQ_MODEL + "), urinish " + attempt);
+        return await groqGenerate(prompt, generationConfig);
+      } catch (error) {
+        errors.push(error);
+        console.error("Groq xatosi:", error.message);
+        if (attempt === 1 && /429|500|502|503|504|timeout|timed out|fetch failed|aborted/i.test(error.message)) {
+          await new Promise(resolve => setTimeout(resolve, 1500));
           continue;
         }
-
-        const resultText = payload.candidates?.[0]?.content?.parts?.map(part => part.text || "").join("").trim();
-        if (!resultText) throw new Error("Gemini bo'sh javob qaytardi.");
-        return resultText;
-      } catch (error) {
-        lastError = error;
-        if (/Gemini API xatosi/.test(error.message)) throw error;
-        if (attempt === 3) {
-          if (model !== models[models.length - 1] && /fetch failed|timeout|timed out|aborted/i.test(error.message)) break;
-          throw error;
-        }
-        if (!/fetch failed|timeout|timed out|aborted/i.test(error.message)) throw error;
-        const delay = attempt * 2500;
-        console.warn("Gemini ulanishida vaqtinchalik xato. " + (delay / 1000) + " soniyadan keyin qayta uriniladi.");
-        await new Promise(resolve => setTimeout(resolve, delay));
+        break;
       }
     }
   }
-
-  throw lastError || new Error("Gemini modellari bilan bog'lanib bo'lmadi.");
+  if (GEMINI_API_KEY) {
+    try {
+      console.log("AI: Groq ishlamadi, Gemini zaxiraga o'tmoqda.");
+      return await geminiGenerate([{ role: "user", parts: [{ text: prompt }] }], generationConfig);
+    } catch (error) {
+      errors.push(error);
+      console.error("Gemini zaxira xatosi:", error.message);
+    }
+  }
+  throw new Error("AI xizmatlari javob bermadi: " + errors.map(e => e.message).join(" | "));
 }
 
 async function extractImageText(ctx) {
@@ -102,11 +112,22 @@ async function extractImageText(ctx) {
 }
 
 async function makeSlides(topic) {
-  const prompt = `Sen professional taqdimot muallifisan. Faqat o'zbek tilida yoz. Faqat JSON qaytar: {"title":"...","subtitle":"...","slides":[{"title":"...","bullets":["...","...","..."],"speaker_notes":"..."}]}. Aynan 8 ta slayd bo'lsin. Har slaydda 3-5 ta qisqa bullet bo'lsin. Birinchi slayd kirish, oxirgisi xulosa. Faktlarni to'qib chiqarmagin.\n\nMavzu: ${topic}`;
-  const raw = await geminiGenerate([{ role: "user", parts: [{ text: prompt }] }], { responseMimeType: "application/json", maxOutputTokens: 2200 });
-  const data = JSON.parse(raw);
+  const prompt = "Mavzu bo'yicha professional taqdimot tayyorla. Faqat o'zbek tilida va faqat JSON qaytar: " +
+    '{"title":"...","subtitle":"...","slides":[{"title":"...","bullets":["...","...","..."],"speaker_notes":"..."}]}. ' +
+    "Aynan 8 ta slayd bo'lsin, har birida 3-5 ta mazmunli va takrorlanmaydigan qisqa bullet bo'lsin. " +
+    "Tuzilma: kirish, asosiy tushunchalar, amaliy misollar, ahamiyat, muammolar/istiqbollar, xulosa. " +
+    "Ishonchsiz statistika va faktlarni to'qib chiqarmagin. Har slayd uchun 1-2 gaplik speaker_notes yoz. Mavzu: " + topic;
+  const raw = await generateText(prompt, { responseMimeType: "application/json", maxOutputTokens: 3500 });
+  let cleaned = raw.replace(/^\x60\x60\x60(?:json)?\s*/i, "").replace(/\s*\x60\x60\x60$/, "").trim();
+  const first = cleaned.indexOf("{"), last = cleaned.lastIndexOf("}");
+  if (first >= 0 && last > first) cleaned = cleaned.slice(first, last + 1);
+  const data = JSON.parse(cleaned);
   if (!Array.isArray(data.slides) || data.slides.length < 6) throw new Error("AI slaydlar tuzilmasini noto'g'ri qaytardi.");
-  data.slides = data.slides.slice(0, 8);
+  data.slides = data.slides.slice(0, 8).map((slide, i) => ({
+    title: String(slide.title || "Slayd " + (i + 1)),
+    bullets: (Array.isArray(slide.bullets) ? slide.bullets : []).slice(0, 5).map(String),
+    speaker_notes: String(slide.speaker_notes || "")
+  }));
   return data;
 }
 
@@ -159,7 +180,7 @@ async function generateAndSend(ctx, source) {
   const status = await ctx.reply("⏳ Taqdimotingiz tayyorlanmoqda. Biroz kuting...");
   const outputPath = path.join(os.tmpdir(), `slayd-ai-${ctx.from.id}-${Date.now()}.pdf`);
   try {
-    console.log("Taqdimot: Gemini sorovi boshlandi.");
+    console.log("Taqdimot: Groq asosiy, Gemini zaxira AI so'rovi boshlandi.");
     const data = await makeSlides(source);
     console.log("Taqdimot: Gemini javobi olindi, PDF tayyorlanmoqda.");
     await createPdf(data, outputPath);
