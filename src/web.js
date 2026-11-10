@@ -34,7 +34,7 @@ function cleanSlide(s,i) {
   if(!title||!bullets.length) throw new Error((i+1)+"-slayd sarlavhasi yoki matni bo'sh.");
   return {title,bullets,speaker_notes:String(s.speaker_notes||"").slice(0,2000)};
 }
-function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,botToken,requiredChannel,freeTesterIds,adminTelegramId}) {
+function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,botToken,requiredChannel,freeTesterIds,adminTelegramId,clickServiceId,clickMerchantId,clickMerchantUserId,clickSecretKey,slidePriceUzs,webAppUrl}) {
   const app=express(); app.disable("x-powered-by"); app.use(express.json({limit:"24mb"})); app.use(express.urlencoded({extended:false,limit:"1mb"}));
   app.use(express.static(path.join(__dirname,"../public"),{extensions:["html"]}));
   const rate=new Map();
@@ -53,7 +53,6 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
   app.post("/api/generate",auth,limit,async(req,res)=>{
     if(!db)return res.status(503).json({error:"Ma'lumotlar bazasi ulanmagan."});
     const topic=String(req.body?.topic||"").trim().slice(0,2000),uid=Number(req.tgUser.id);
-    if(!isFreeUser(uid))return res.status(402).json({error:"Sinov rejimida faqat admin va ruxsat berilgan test akkauntlari foydalanadi. Click to'lovi ulanmoqda."});
     if(!(await channelMember(uid)))return res.status(403).json({error:"Davom etish uchun majburiy kanalga obuna bo'ling."});
     if(topic.length<4)return res.status(400).json({error:"Mavzuni kamida 4 ta belgida yozing."});
     let pid;
@@ -178,7 +177,7 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
     const responseBase={click_trans_id:clickTransId,merchant_trans_id:merchantTransId,merchant_prepare_id:prepareId||null,error:0,error_note:"Success"};
     function fail(code,note){return res.status(200).json({...responseBase,error:code,error_note:note});}
     if(!clickServiceId||!clickSecretKey||serviceId!==String(clickServiceId))return fail(-1,"SIGN CHECK FAILED!");
-    if(!clickTransId||!merchantTransId||!Number.isFinite(amount)||!action||!signTime||!received)return fail(-8,"Error in request from CLICK");
+    if(!clickTransId||!merchantTransId||!Number.isFinite(amount)||!action||!signTime||!received||!p.click_paydoc_id)return fail(-8,"Error in request from CLICK");
     if(action!=="0"&&action!=="1")return fail(-3,"Action not found");
     if(action==="1"&&!prepareId)return fail(-8,"merchant_prepare_id is required");
     const signature=clickTransId+serviceId+clickSecretKey+merchantTransId+(action==="1"?prepareId:"")+String(p.amount)+action+signTime;
@@ -203,7 +202,7 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
         responseBase.merchant_prepare_id=String(payment.merchant_prepare_id);
         return res.status(200).json(responseBase);
       }
-      if(String(payment.merchant_prepare_id)!==prepareId)return fail(-6,"Transaction does not exist");
+      if(String(payment.merchant_prepare_id)!==prepareId||payment.status!=="processing")return fail(-6,"Transaction does not exist");
       if(payment.click_trans_id&&String(payment.click_trans_id)!==clickTransId)return fail(-6,"Transaction does not exist");
       if(Number(p.error||0)!==0){
         await db.query("update public.slayd_payments set status='failed',provider_payload=$1,updated_at=now() where id=$2",
