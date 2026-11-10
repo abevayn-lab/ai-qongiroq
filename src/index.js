@@ -190,7 +190,7 @@ bot.command("id", async (ctx) => {
 
 bot.command("start", async (ctx) => {
   if (!(await requireAccess(ctx))) return;
-  const message = "👋 Assalomu alaykum! Men SLAYD AI.\n\n📚 Mavzuni yozing yoki Web App orqali taqdimotni tahrirlang.\n8 slaydli PDF tayyorlayman.";
+  const message = "👋 Assalomu alaykum! Men SLAYD AI.\n\n🎨 Taqdimot yaratish uchun Web App tugmasini bosing.\nMavzu kiriting, 8 slaydni tahrirlang, rasmlarni joylashtiring va PDFni Telegramda oling.";
   if (validWebAppUrl(WEB_APP_URL)) {
     await ctx.reply(message, { reply_markup: new InlineKeyboard().webApp("🎨 Taqdimot yaratish va tahrirlash", WEB_APP_URL) });
   } else {
