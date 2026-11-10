@@ -214,7 +214,6 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
         }
         slides.push(s);
       }
-      if(free&&generateSlideImages)await generateSlideImages({title,slides},dir);
       for(const slide of slides){
         if(!slide.imageData&&slide.imagePath&&fs.existsSync(slide.imagePath)){
           slide.imageData=fs.readFileSync(slide.imagePath);
