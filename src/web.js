@@ -131,7 +131,7 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
         }
       }
       const pdfPath=path.join(dir,fileName(project.file_name));
-      await createPdf({title:project.topic||slides[0].title,subtitle:"SLAYD AI orqali tayyorlandi",slides},pdfPath);
+      await createPdf({title:project.topic||slides[0].title,subtitle:"",slides},pdfPath);
       await bot.api.sendDocument(Number(project.telegram_user_id),new InputFile(pdfPath,fileName(project.file_name)),{caption:"✅ Click to'lovi tasdiqlandi. Taqdimotingiz tayyor va Telegram chatga yuborildi!"});
       await db.query("update public.slayd_projects set status='completed',pdf_path=$1,error_message=null,updated_at=now() where id=$2",[fileName(project.file_name),projectId]);
       try{await db.query("update public.slayd_slides set image_data=null,image_mime=null where project_id=$1",[projectId]);}catch(cleanupError){console.warn("Paid image cleanup:",cleanupError.message);}
