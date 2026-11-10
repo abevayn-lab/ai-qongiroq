@@ -94,11 +94,14 @@ bot.command("admin", async (ctx) => {
     const result = await db.query(`
       select
         (select count(*)::int from public.slayd_users) as users_total,
-        (select count(*)::int from public.slayd_users where created_at::date = current_date) as users_today,
+        (select count(*)::int from public.slayd_users where (created_at at time zone 'Asia/Tashkent')::date = (now() at time zone 'Asia/Tashkent')::date) as users_today,
         (select count(*)::int from public.slayd_projects) as projects_total,
-        (select count(*)::int from public.slayd_projects where created_at::date = current_date) as projects_today,
+        (select count(*)::int from public.slayd_projects where (created_at at time zone 'Asia/Tashkent')::date = (now() at time zone 'Asia/Tashkent')::date) as projects_today,
         (select count(*)::int from public.slayd_projects where status = 'completed') as projects_completed,
         (select count(*)::int from public.slayd_projects where status = 'failed') as projects_failed,
+        (select count(*)::int from public.slayd_projects where status = 'awaiting_payment') as projects_awaiting_payment,
+        (select count(*)::int from public.slayd_payments where status = 'pending') as payments_pending,
+        (select count(*)::int from public.slayd_payments where status = 'paid') as payments_paid,
         (select coalesce(sum(amount_uzs), 0)::bigint from public.slayd_payments where status = 'paid') as revenue_uzs
     `);
     const s = result.rows[0];
@@ -110,6 +113,9 @@ bot.command("admin", async (ctx) => {
       "📅 Bugungi buyurtmalar: " + s.projects_today + "\n" +
       "✅ Tayyor PDF: " + s.projects_completed + "\n" +
       "❌ Xatolik: " + s.projects_failed + "\n" +
+      "💳 Kutilayotgan buyurtmalar: " + s.projects_awaiting_payment + "\n" +
+      "⏳ Kutilayotgan tolovlar: " + s.payments_pending + "\n" +
+      "💵 Tasdiqlangan tolovlar: " + s.payments_paid + "\n" +
       "💰 Tasdiqlangan tushum: " + Number(s.revenue_uzs).toLocaleString("uz-UZ") + " so‘m"
     );
   } catch (error) {
