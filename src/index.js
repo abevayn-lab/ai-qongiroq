@@ -33,7 +33,8 @@ async function geminiGenerate(contents, generationConfig = {}) {
   const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ contents, generationConfig: { temperature: 0.7, ...generationConfig } })
+    body: JSON.stringify({ contents, generationConfig: { temperature: 0.4, ...generationConfig } }),
+    signal: AbortSignal.timeout(60000)
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error("Gemini API xatosi (" + response.status + "): " + (payload.error?.message || response.statusText));
@@ -58,7 +59,7 @@ async function extractImageText(ctx) {
 
 async function makeSlides(topic) {
   const prompt = `Sen professional taqdimot muallifisan. Faqat o'zbek tilida yoz. Faqat JSON qaytar: {"title":"...","subtitle":"...","slides":[{"title":"...","bullets":["...","...","..."],"speaker_notes":"..."}]}. Aynan 8 ta slayd bo'lsin. Har slaydda 3-5 ta qisqa bullet bo'lsin. Birinchi slayd kirish, oxirgisi xulosa. Faktlarni to'qib chiqarmagin.\n\nMavzu: ${topic}`;
-  const raw = await geminiGenerate([{ role: "user", parts: [{ text: prompt }] }], { responseMimeType: "application/json", maxOutputTokens: 3500 });
+  const raw = await geminiGenerate([{ role: "user", parts: [{ text: prompt }] }], { responseMimeType: "application/json", maxOutputTokens: 2200 });
   const data = JSON.parse(raw);
   if (!Array.isArray(data.slides) || data.slides.length < 6) throw new Error("AI slaydlar tuzilmasini noto'g'ri qaytardi.");
   data.slides = data.slides.slice(0, 8);
@@ -114,8 +115,11 @@ async function generateAndSend(ctx, source) {
   const status = await ctx.reply("⏳ Taqdimotingiz tayyorlanmoqda. Biroz kuting...");
   const outputPath = path.join(os.tmpdir(), `slayd-ai-${ctx.from.id}-${Date.now()}.pdf`);
   try {
+    console.log("Taqdimot: Gemini sorovi boshlandi.");
     const data = await makeSlides(source);
+    console.log("Taqdimot: Gemini javobi olindi, PDF tayyorlanmoqda.");
     await createPdf(data, outputPath);
+    console.log("Taqdimot: PDF tayyor.");
     await ctx.replyWithDocument(new InputFile(outputPath, "slayd-ai-taqdimot.pdf"), {
       caption: "✅ Taqdimotingiz tayyor! SLAYD AI orqali yaratildi."
     });
