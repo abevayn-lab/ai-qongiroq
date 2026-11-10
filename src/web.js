@@ -225,7 +225,7 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
 
       if(!free){
         const orderCode="SLD-"+crypto.randomUUID().replace(/-/g,"").slice(0,10).toUpperCase();
-        await db.query("insert into public.slayd_payments (project_id,telegram_user_id,provider,amount_uzs,status,order_code) values ($1,$2,'manual',$3,'pending',$4)",[pid,uid,paymentPrice,orderCode]);
+        await db.query("insert into public.slayd_payments (project_id,telegram_user_id,provider,amount_uzs,status,order_code,merchant_trans_id) values ($1,$2,'manual',$3,'pending',$4,$4)",[pid,uid,paymentPrice,orderCode]);
         await db.query("update public.slayd_projects set status='awaiting_payment',updated_at=now() where id=$1 and telegram_user_id=$2",[pid,uid]);
         return res.json({ok:true,paymentRequired:true,orderCode,cardNumber:settings[0],cardHolder:settings[1],priceUzs:paymentPrice,message:"Kartaga to‘lov qiling va chek rasmini Telegram botga yuboring."});
       }
