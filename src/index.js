@@ -129,7 +129,7 @@ bot.on('message:text', async (ctx,next)=>{
   const key=adminInputState.get(String(ctx.from?.id));
   if(!key||Number(ctx.from?.id)!==Number(ADMIN_TELEGRAM_ID)||ctx.message.text.startsWith('/')) return next();
   const value=ctx.message.text.trim();
-  if(key==='payment_price_uzs'&&(!/^\\d+$/.test(value)||Number(value)<=0)) return ctx.reply('Narxni musbat raqamda kiriting.');
+  if(key==='payment_price_uzs'&&(!/^\d+$/.test(value)||Number(value)<=0)) return ctx.reply('Narxni musbat raqamda kiriting.');
   if(key==='payment_card_number'&&!/^[0-9 ]{12,25}$/.test(value)) return ctx.reply('Karta raqamini tekshirib qayta yuboring.');
   if(key==='payment_review_chat_id') return next();
   await db.query('insert into public.slayd_settings(setting_key,setting_value,updated_by,updated_at) values($1,$2,$3,now()) on conflict(setting_key) do update set setting_value=excluded.setting_value,updated_by=excluded.updated_by,updated_at=now()',[key,value,Number(ctx.from.id)]);
@@ -176,6 +176,15 @@ bot.command("stats", async (ctx) => {
   }
 });
 
+
+
+bot.command("admin", async ctx => {
+ if(Number(ctx.from?.id)!==Number(ADMIN_TELEGRAM_ID)) return ctx.reply("Faqat administrator uchun.");
+ const r=await db.query("select setting_key,setting_value from public.slayd_settings");
+ const v=Object.fromEntries(r.rows.map(x=>[x.setting_key,x.setting_value]));
+ const kb=new InlineKeyboard().text("Karta raqami","cfg:payment_card_number").row().text("Karta egasi","cfg:payment_card_holder").row().text("Narx","cfg:payment_price_uzs").row().text("Chek kanali","cfg:payment_review_chat_id");
+ await ctx.reply("ADMIN PANEL\nKarta: "+(v.payment_card_number||"yo‘q")+"\nEgasi: "+(v.payment_card_holder||"yo‘q")+"\nNarx: "+(v.payment_price_uzs||"yo‘q")+" so‘m\nChek kanali: "+(v.payment_review_chat_id||"yo‘q"),{reply_markup:kb});
+});
 
 bot.command('payment', async ctx => {
  if(Number(ctx.from?.id)!==Number(ADMIN_TELEGRAM_ID)) return ctx.reply('Faqat admin uchun.');
