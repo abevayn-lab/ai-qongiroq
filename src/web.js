@@ -266,9 +266,12 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
       .then(()=>db.query("update public.slayd_payments set status='failed',updated_at=now() where status in ('pending','processing') and created_at<now()-interval '7 days'"))
       .then(()=>db.query("update public.slayd_slides set image_data=null,image_mime=null where project_id in (select id from public.slayd_projects where status in ('cancelled','failed') and created_at<now()-interval '7 days')"))
       .catch(e=>console.error("Expired project cleanup:",e));
-    if(db)db.query("select id from public.slayd_projects where status='paid' order by created_at asc limit 10")
+    if(db)db.query("update public.slayd_projects p set status=case when exists(select 1 from public.slayd_payments pay where pay.project_id=p.id and pay.status='paid') then 'paid' else 'failed' end,error_message='Recovered after interrupted generation',updated_at=now() where p.status='generating' and p.updated_at<now()-interval '10 minutes'")
+      .then(()=>db.query("update public.slayd_payments set status='failed',updated_at=now() where status in ('pending','processing') and project_id in (select id from public.slayd_projects where status='failed' and error_message='Recovered after interrupted generation')"))
+      .then(()=>db.query("select id from public.slayd_projects where status='paid' order by created_at asc limit 10"))
       .then(r=>r.rows.forEach(row=>deliverPaidProject(row.id).catch(e=>console.error("Paid order recovery:",e))))
-      .catch(e=>console.error("Paid order recovery scan:",e));
+      .catch(e=>console.error("Interrupted order recovery:",e));
+
   });server.on("error",e=>console.error("Web server:",e));return server;
 }
 module.exports={startWebApp,verifyTelegramInitData};
