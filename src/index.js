@@ -176,6 +176,15 @@ bot.command("admin", async (ctx) => {
   }
 });
 
+
+bot.command('payment', async ctx => {
+ if(Number(ctx.from?.id)!==Number(ADMIN_TELEGRAM_ID)) return ctx.reply('Faqat admin uchun.');
+ const kb=new InlineKeyboard().text('Karta raqami','cfg:payment_card_number').row().text('Karta egasi','cfg:payment_card_holder').row().text('Narx','cfg:payment_price_uzs').row().text('Chek kanali','cfg:payment_review_chat_id');
+ const r=await db.query('select setting_key,setting_value from public.slayd_settings');
+ const v=Object.fromEntries(r.rows.map(x=>[x.setting_key,x.setting_value]));
+ await ctx.reply('TO‘LOV SOZLAMALARI\\nKarta: '+(v.payment_card_number||'yo‘q')+'\\nEgasi: '+(v.payment_card_holder||'yo‘q')+'\\nNarx: '+(v.payment_price_uzs||'yo‘q')+' so‘m\\nChek kanali: '+(v.payment_review_chat_id||'yo‘q'),{reply_markup:kb});
+});
+
 bot.command("status", async (ctx) => {
   if (!ADMIN_TELEGRAM_ID || Number(ctx.from?.id) !== Number(ADMIN_TELEGRAM_ID)) {
     return ctx.reply("⛔ Bu buyruq faqat administrator uchun.");
