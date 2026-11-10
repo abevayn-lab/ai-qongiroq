@@ -343,7 +343,7 @@ async function extractImageText(ctx) {
     const geminiText = await textQueue.run(() => geminiGenerate([{ role: "user", parts: [
       { text: "Rasmdagi matnni o'qib, taqdimot uchun muhim ma'lumotlarni o'zbek tilida ajratib ber. O'qilmagan joylarni to'qima." },
       { inlineData: { mimeType: "image/jpeg", data: base64 } }
-    ] }], { maxOutputTokens: 1400 });
+    ] }], { maxOutputTokens: 1400 }));
     return { text: geminiText, imageBuffer: buffer };
   }
   throw new Error("Rasmni o'qish uchun Groq Vision va Gemini xizmatlari javob bermadi.");
