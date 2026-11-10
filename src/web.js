@@ -72,7 +72,7 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
     if(topic.length<4)return res.status(400).json({error:"Mavzuni kamida 4 ta belgida yozing."});
     if(!(await channelMember(uid)))return res.status(403).json({error:"Davom etish uchun majburiy kanalga obuna bo'ling. Botga qaytib kanalga obuna bo'ling va qayta tekshiring."});
 
-    const dailyLimit=isFreeUser(uid)?25:3;
+    const dailyLimit=Number(uid)===Number(adminTelegramId)?100:(isFreeUser(uid)?25:3);
     const daily=await db.query("select count(*)::int as n from public.slayd_projects where telegram_user_id=$1 and created_at>now()-interval '24 hours'",[uid]);
     if(Number(daily.rows[0].n)>=dailyLimit)return res.status(429).json({error:"Kunlik taqdimot limiti tugadi. Ertaga qayta urinib ko'ring."});
     const active=await db.query("select count(*)::int as n from public.slayd_projects where telegram_user_id=$1 and status in ('draft','generating','awaiting_payment','paid') and created_at>now()-interval '2 hours'",[uid]);
