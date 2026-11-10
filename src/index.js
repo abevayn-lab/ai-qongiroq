@@ -133,46 +133,57 @@ async function makeSlides(topic) {
 
 function createPdf(data, outputPath) {
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: [960, 540], margin: 54, info: { Title: data.title || "SLAYD AI taqdimoti", Author: "SLAYD AI" } });
+    const doc = new PDFDocument({ size: [960, 540], margin: 0, info: { Title: data.title || "SLAYD AI taqdimoti", Author: "SLAYD AI" } });
     const stream = fs.createWriteStream(outputPath);
     doc.pipe(stream);
-
-    const navy = "#14213D";
-    const blue = "#2563EB";
-    const ink = "#202B3C";
-    const muted = "#667085";
-
+    const C = { navy: "#101B35", navy2: "#19294B", blue: "#3977F6", cyan: "#36C5D8", ink: "#18243A", muted: "#65738B", paper: "#F4F7FC", white: "#FFFFFF", line: "#E3EAF4", pale: "#EAF1FF", paleCyan: "#E8F8FA" };
+    const safe = v => String(v || "").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "");
     data.slides.forEach((slide, index) => {
-      if (index > 0) doc.addPage({ size: [960, 540], margin: 54 });
-      doc.rect(0, 0, 960, 540).fill("#F5F7FB");
-      doc.rect(0, 0, 960, 12).fill(blue);
-      doc.fillColor(blue).font("Helvetica-Bold").fontSize(12).text("SLAYD AI  /  TAQDIMOT", 58, 38, { characterSpacing: 1.2 });
-      doc.fillColor(navy).font("Helvetica-Bold").fontSize(index === 0 ? 34 : 28)
-        .text(slide.title || data.title || "Taqdimot", 58, index === 0 ? 125 : 88, { width: 820, height: 90 });
-
-      if (index === 0 && data.subtitle) {
-        doc.fillColor(muted).font("Helvetica").fontSize(17).text(data.subtitle, 60, 225, { width: 790 });
+      if (index) doc.addPage({ size: [960, 540], margin: 0 });
+      const cover = index === 0;
+      doc.rect(0, 0, 960, 540).fill(cover ? C.navy : C.paper);
+      if (cover) {
+        doc.rect(0, 0, 960, 13).fill(C.cyan);
+        doc.circle(830, 110, 170).fill(C.navy2);
+        doc.circle(830, 110, 110).lineWidth(2).strokeColor("#31466F").stroke();
+        doc.circle(830, 110, 64).fill(C.blue);
+        doc.fillColor(C.white).font("Helvetica-Bold").fontSize(12).text("SLAYD AI  /  TAQDIMOT", 68, 54, { characterSpacing: 2 });
+        doc.fillColor(C.cyan).font("Helvetica-Bold").fontSize(11).text("BILIM  •  TAHLIL  •  G'OYA", 70, 145);
+        doc.fillColor(C.white).font("Helvetica-Bold").fontSize(35).text(safe(slide.title || data.title || "Taqdimot"), 68, 183, { width: 690, height: 120, ellipsis: true });
+        doc.roundedRect(70, 322, 86, 5, 2).fill(C.cyan);
+        doc.fillColor("#D5DEEF").font("Helvetica").fontSize(17).text(safe(data.subtitle || "Mavzu bo'yicha tayyorlangan taqdimot"), 70, 348, { width: 690, height: 52, ellipsis: true });
+        slide.bullets.slice(0, 3).forEach((item, i) => {
+          const y = 425 + i * 25;
+          doc.circle(76, y + 7, 3).fill(C.cyan);
+          doc.fillColor("#E6ECF7").font("Helvetica").fontSize(12).text(safe(item), 90, y, { width: 650, height: 19, ellipsis: true });
+        });
+        doc.fillColor("#AAB8D0").font("Helvetica").fontSize(10).text("SLAYD AI  •  8 SLAYD  •  PDF", 70, 500);
+        doc.fillColor("#AAB8D0").text("01 / 08", 820, 500, { width: 70, align: "right" });
+      } else {
+        doc.rect(0, 0, 960, 10).fill(C.blue);
+        doc.fillColor(C.blue).font("Helvetica-Bold").fontSize(10).text("SLAYD AI   /   TAQDIMOT", 58, 34, { characterSpacing: 1.5 });
+        doc.fillColor(C.muted).font("Helvetica-Bold").fontSize(10).text("BO'LIM  " + String(index).padStart(2, "0"), 790, 34, { width: 110, align: "right" });
+        doc.fillColor(C.ink).font("Helvetica-Bold").fontSize(27).text(safe(slide.title), 58, 76, { width: 820, height: 72, ellipsis: true });
+        doc.roundedRect(58, 153, 64, 4, 2).fill(C.cyan);
+        const bullets = slide.bullets.length ? slide.bullets : ["Ushbu bo'lim bo'yicha qo'shimcha ma'lumot."];
+        const top = 185, gap = 12, cardH = Math.min(78, (280 - gap * (bullets.length - 1)) / bullets.length);
+        bullets.forEach((item, j) => {
+          const y = top + j * (cardH + gap);
+          doc.roundedRect(58, y, 844, cardH, 12).fill(C.white);
+          doc.roundedRect(58, y, 5, cardH, 2).fill(j % 2 ? C.cyan : C.blue);
+          doc.circle(91, y + cardH / 2, 12).fill(j % 2 ? C.paleCyan : C.pale);
+          doc.fillColor(C.blue).font("Helvetica-Bold").fontSize(10).text(String(j + 1).padStart(2, "0"), 82, y + cardH / 2 - 4, { width: 18, align: "center" });
+          doc.fillColor(C.ink).font("Helvetica").fontSize(cardH < 52 ? 13 : 15).text(safe(item), 119, y + 12, { width: 750, height: cardH - 18, ellipsis: true, lineGap: 3 });
+        });
+        doc.moveTo(58, 492).lineTo(902, 492).strokeColor(C.line).lineWidth(1).stroke();
+        doc.fillColor(C.muted).font("Helvetica").fontSize(9).text("SLAYD AI  •  O'QUV TAQDIMOTI", 58, 505);
+        doc.fillColor(C.muted).font("Helvetica-Bold").fontSize(10).text(String(index + 1).padStart(2, "0") + " / " + String(data.slides.length).padStart(2, "0"), 820, 503, { width: 80, align: "right" });
       }
-
-      const bullets = Array.isArray(slide.bullets) ? slide.bullets : [];
-      let y = index === 0 ? 290 : 185;
-      const available = index === 0 ? 175 : 285;
-      const lineGap = Math.min(58, available / Math.max(bullets.length, 1));
-      bullets.forEach((bullet) => {
-        doc.circle(72, y + 9, 5).fill(blue);
-        doc.fillColor(ink).font("Helvetica").fontSize(17)
-          .text(String(bullet), 92, y, { width: 790, height: lineGap - 4, ellipsis: true });
-        y += lineGap;
-      });
-
-      doc.moveTo(58, 485).lineTo(902, 485).strokeColor("#DCE2EC").lineWidth(1).stroke();
-      doc.fillColor(muted).font("Helvetica").fontSize(10).text("SLAYD AI — AI yordamida tayyorlandi", 58, 498);
-      doc.text(`${index + 1} / ${data.slides.length}`, 850, 498, { width: 52, align: "right" });
     });
-
-    doc.end();
     stream.on("finish", resolve);
     stream.on("error", reject);
+    doc.on("error", reject);
+    doc.end();
   });
 }
 
