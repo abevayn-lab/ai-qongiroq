@@ -218,7 +218,7 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
     const clickTransId=String(p.click_trans_id||""),serviceId=String(p.service_id||""),merchantTransId=String(p.merchant_trans_id||"");
     const amount=Number(p.amount),action=String(p.action||""),signTime=String(p.sign_time||""),received=String(p.sign_string||"");
     const prepareId=String(p.merchant_prepare_id||"");
-    const responseBase={click_trans_id:clickTransId,merchant_trans_id:merchantTransId,merchant_prepare_id:prepareId||null,error:0,error_note:"Success"};
+    const responseBase={click_trans_id:clickTransId,merchant_trans_id:merchantTransId,merchant_prepare_id:prepareId||null,merchant_confirm_id:prepareId||null,error:0,error_note:"Success"};
     function fail(code,note){return res.status(200).json({...responseBase,error:code,error_note:note});}
     if(!clickServiceId||!clickSecretKey||serviceId!==String(clickServiceId))return fail(-1,"SIGN CHECK FAILED!");
     if(!clickTransId||!merchantTransId||!Number.isFinite(amount)||!action||!signTime||!received||!p.click_paydoc_id)return fail(-8,"Error in request from CLICK");
@@ -242,7 +242,7 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
         if(payment.click_trans_id&&String(payment.click_trans_id)!==clickTransId)return fail(-8,"Another transaction is already processing");
         await db.query("update public.slayd_payments set status='processing',click_trans_id=$1,click_paydoc_id=$2,updated_at=now() where id=$3",
           [clickTransId,p.click_paydoc_id?Number(p.click_paydoc_id):null,payment.id]);
-        responseBase.merchant_prepare_id=String(payment.merchant_prepare_id);
+        responseBase.merchant_prepare_id=String(payment.merchant_prepare_id);responseBase.merchant_confirm_id=String(payment.merchant_prepare_id);
         return res.status(200).json(responseBase);
       }
       if(String(payment.merchant_prepare_id)!==prepareId||payment.status!=="processing")return fail(-6,"Transaction does not exist");
