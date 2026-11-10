@@ -382,10 +382,11 @@ async function generateSlideImages(data, outputDir) {
         String(data.title || "Education") + ". Slide: " + slide.title + ". Key ideas: " + (slide.bullets || []).join("; ") +
         ". Landscape 16:9 composition, clean professional lighting, clear focal subject, visually informative and appropriate for an academic presentation.";
       try {
+        await imageQueue.run(async () => {
         const response = await fetch("https://generativelanguage.googleapis.com/v1/models/" + GEMINI_IMAGE_MODEL + ":generateContent", {
           method: "POST",
           headers: { "x-goog-api-key": GEMINI_API_KEY, "Content-Type": "application/json" },
-          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { responseModalities: ["TEXT", "IMAGE"] } }),
           signal: AbortSignal.timeout(60000)
         });
         const payload = await response.json().catch(() => ({}));
@@ -398,6 +399,7 @@ async function generateSlideImages(data, outputDir) {
         const imagePath = path.join(outputDir, "ai-slide-" + (index + 1) + "." + ext);
         fs.writeFileSync(imagePath, Buffer.from(imagePart.inlineData.data, "base64"), { flag: "wx" });
         slide.imagePath = imagePath;
+        });
       } catch (error) {
         console.warn("AI rasm yaratilmadi, slayd matn bilan qoladi (" + (index + 1) + "):", error.message);
       }
