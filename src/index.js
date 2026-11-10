@@ -409,6 +409,6 @@ bot.on("message:photo", async (ctx) => {
 });
 
 bot.catch((error) => console.error("Bot xatosi:", error));
-startWebApp({ bot, db, makeSlides, createPdf, InputFile, botToken: BOT_TOKEN });
+startWebApp({ bot, db, makeSlides, createPdf, generateSlideImages, InputFile, botToken: BOT_TOKEN });
 bot.start();
 console.log("SLAYD AI bot ishga tushdi.");
