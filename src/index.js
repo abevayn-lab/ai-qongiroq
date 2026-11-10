@@ -8,7 +8,7 @@ const path = require("path");
 const { startWebApp } = require("./web");
 const { Pool } = require("pg");
 
-const { BOT_TOKEN, GROQ_API_KEY, GROQ_MODEL = "openai/gpt-oss-120b", GEMINI_API_KEY, GEMINI_MODEL = "gemini-3.8-flash", GEMINI_IMAGE_MODEL = "gemini-3.1-flash-lite-image", DATABASE_URL, ADMIN_TELEGRAM_ID, WEB_APP_URL: WEB_APP_URL_RAW, REQUIRED_CHANNEL, REQUIRED_CHANNEL_URL, FREE_TESTER_IDS = "", CLICK_SERVICE_ID, CLICK_MERCHANT_ID, CLICK_MERCHANT_USER_ID, CLICK_SECRET_KEY, SLIDE_PRICE_UZS } = process.env;
+const { BOT_TOKEN, GROQ_API_KEY, GROQ_MODEL = "openai/gpt-oss-120b", GEMINI_API_KEY, GEMINI_MODEL = "gemini-3.8-flash", GEMINI_IMAGE_MODEL = "gemini-3.1-flash-lite-image", OPENAI_API_KEY, OPENAI_IMAGE_MODEL = "gpt-image-2.5-flare", DATABASE_URL, ADMIN_TELEGRAM_ID, WEB_APP_URL: WEB_APP_URL_RAW, REQUIRED_CHANNEL, REQUIRED_CHANNEL_URL, FREE_TESTER_IDS = "", CLICK_SERVICE_ID, CLICK_MERCHANT_ID, CLICK_MERCHANT_USER_ID, CLICK_SECRET_KEY, SLIDE_PRICE_UZS } = process.env;
 const WEB_APP_URL = WEB_APP_URL_RAW || "https://ai-qongiroq-production.up.railway.app";
 
 if (!BOT_TOKEN || (!GROQ_API_KEY && !GEMINI_API_KEY)) {
@@ -214,7 +214,7 @@ bot.command("status", async (ctx) => {
     "🌐 Web App URL: " + (validWebAppUrl(WEB_APP_URL) ? "✅ sozlangan" : "❌ WEB_APP_URL kerak") + "\n" +
     "🗄 Supabase: " + database + "\n" +
     "🤖 AI: " + ((GROQ_API_KEY || GEMINI_API_KEY) ? "✅ kalit bor" : "❌ kalit yo‘q") + "\n" +
-    "🖼 AI rasm modeli: " + (GEMINI_API_KEY ? "sozlangan (" + GEMINI_IMAGE_MODEL + ")" : "❌ GEMINI_API_KEY kerak") + "\n" +
+    "🖼 AI rasm modeli: " + ([GEMINI_API_KEY ? "Gemini" : "", OPENAI_API_KEY ? "OpenAI zaxira" : ""].filter(Boolean).join(" → ") || "❌ rasm API kaliti kerak") + "\n" +
     "💳 Click: " + (missingClick.length ? "❌ " + missingClick.join(", ") : "✅ sozlangan") + "\n" +
     "📢 Majburiy kanal: " + (REQUIRED_CHANNEL ? "yoqilgan" : "o‘chirilgan") + "\n" +
     "🧪 Bepul testerlar: " + freeTesterIds.size
@@ -422,46 +422,89 @@ async function makeSlides(topic) {
 
 
 async function generateSlideImages(data, outputDir) {
-  if (!GEMINI_API_KEY) {
-    console.warn("AI rasmlar yaratilmaydi: GEMINI_API_KEY sozlanmagan.");
+  const targets = [0, 2, 4, 6].filter(i => data.slides[i] && !data.slides[i].imagePath);
+  if (!targets.length) return;
+  if (!GEMINI_API_KEY && !OPENAI_API_KEY) {
+    console.warn("AI rasmlar yaratilmaydi: GEMINI_API_KEY va OPENAI_API_KEY sozlanmagan.");
     return;
   }
-  const targets = [0, 2, 4, 6].filter(i => data.slides[i] && !data.slides[i].imagePath);
   let cursor = 0;
+  let generated = 0;
   async function worker() {
     while (cursor < targets.length) {
       const index = targets[cursor++];
       const slide = data.slides[index];
       const prompt = "Create a polished, realistic editorial illustration or photograph for a student presentation slide. No text, no letters, no captions, no logos, no watermark. Topic: " +
         String(data.title || "Education") + ". Slide: " + slide.title + ". Key ideas: " + (slide.bullets || []).join("; ") +
-        ". Landscape 16:9 composition, clean professional lighting, clear focal subject, visually informative and appropriate for an academic presentation.";
+        ". Wide landscape 16:9 composition, clean professional lighting, clear focal subject, visually informative and appropriate for an academic presentation. Avoid collage and avoid any written words.";
       try {
         await imageQueue.run(async () => {
-        const response = await fetch("https://generativelanguage.googleapis.com/v1/models/" + GEMINI_IMAGE_MODEL + ":generateContent", {
-          method: "POST",
-          headers: { "x-goog-api-key": GEMINI_API_KEY, "Content-Type": "application/json" },
-          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { responseModalities: ["TEXT", "IMAGE"] } }),
-          signal: AbortSignal.timeout(60000)
-        });
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error("Gemini Image API (" + response.status + "): " + (payload.error?.message || response.statusText));
-        const parts = payload.candidates?.[0]?.content?.parts || [];
-        const imagePart = parts.find(part => part.inlineData?.data);
-        if (!imagePart) throw new Error("Rasm modeli rasm qaytarmadi.");
-        const mime = imagePart.inlineData.mimeType || "image/png";
-        const ext = mime.includes("jpeg") ? "jpg" : "png";
-        const imagePath = path.join(outputDir, "ai-slide-" + (index + 1) + "." + ext);
-        fs.writeFileSync(imagePath, Buffer.from(imagePart.inlineData.data, "base64"), { flag: "wx" });
-        slide.imagePath = imagePath;
+          let imageBuffer = null;
+          let mime = "image/png";
+          let geminiError = null;
+
+          if (GEMINI_API_KEY) {
+            try {
+              const response = await fetch("https://generativelanguage.googleapis.com/v1/models/" + GEMINI_IMAGE_MODEL + ":generateContent", {
+                method: "POST",
+                headers: { "x-goog-api-key": GEMINI_API_KEY, "Content-Type": "application/json" },
+                body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { responseModalities: ["TEXT", "IMAGE"] } }),
+                signal: AbortSignal.timeout(60000)
+              });
+              const payload = await response.json().catch(() => ({}));
+              if (!response.ok) throw new Error("Gemini Image API (" + response.status + "): " + (payload.error?.message || response.statusText));
+              const imagePart = (payload.candidates?.[0]?.content?.parts || []).find(part => part.inlineData?.data);
+              if (!imagePart) throw new Error("Gemini rasm modeli rasm qaytarmadi.");
+              mime = imagePart.inlineData.mimeType || "image/png";
+              imageBuffer = Buffer.from(imagePart.inlineData.data, "base64");
+              console.log("Slayd " + (index + 1) + ": rasm Gemini orqali yaratildi.");
+            } catch (error) {
+              geminiError = error;
+              console.warn("Gemini rasm xatosi, OpenAI zaxira modeliga o'tilmoqda (" + (index + 1) + "):", error.message);
+            }
+          }
+
+          if (!imageBuffer && OPENAI_API_KEY) {
+            const response = await fetch("https://api.openai.com/v1/images/generations", {
+              method: "POST",
+              headers: { "Authorization": "Bearer " + OPENAI_API_KEY, "Content-Type": "application/json" },
+              body: JSON.stringify({
+                model: OPENAI_IMAGE_MODEL,
+                prompt,
+                size: "1536x864",
+                quality: "medium",
+                output_format: "png",
+                n: 1
+              }),
+              signal: AbortSignal.timeout(120000)
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error("OpenAI Image API (" + response.status + "): " + (payload.error?.message || response.statusText));
+            const encoded = payload.data?.[0]?.b64_json;
+            if (!encoded) throw new Error("OpenAI rasm modeli rasm ma'lumotini qaytarmadi.");
+            imageBuffer = Buffer.from(encoded, "base64");
+            mime = "image/png";
+            console.log("Slayd " + (index + 1) + ": rasm OpenAI zaxira modeli orqali yaratildi.");
+          }
+
+          if (!imageBuffer) {
+            throw new Error(geminiError ? geminiError.message + " | OPENAI_API_KEY sozlanmagan." : "Rasm yaratish uchun ishlaydigan API kaliti topilmadi.");
+          }
+
+          const ext = mime.includes("jpeg") ? "jpg" : "png";
+          const imagePath = path.join(outputDir, "ai-slide-" + (index + 1) + "." + ext);
+          fs.writeFileSync(imagePath, imageBuffer, { flag: "wx" });
+          slide.imagePath = imagePath;
+          generated++;
         });
       } catch (error) {
-        console.warn("AI rasm yaratilmadi, slayd matn bilan qoladi (" + (index + 1) + "):", error.message);
+        console.error("AI rasm yaratilmadi (" + (index + 1) + "-slayd):", error.message);
       }
     }
   }
   await Promise.all([worker(), worker()]);
+  console.log("AI rasm natijasi: " + generated + "/" + targets.length + " ta rasm yaratildi.");
 }
-
 function createPdf(data, outputPath) {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: [960, 540], margin: 0, info: { Title: data.title || "Taqdimot", Author: "Taqdimot" } });
