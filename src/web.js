@@ -92,7 +92,7 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
       const data=await makeSlides(topic);
       const imageDir=fs.mkdtempSync(path.join(os.tmpdir(),"slayd-gemini-"));
       try{
-        const imageResult=generateSlideImages?await generateSlideImages({title:data.title||topic,slides:data.slides},imageDir):{generated:0,failed:0};
+        const imageResult={generated:0,failed:0};
         const client=await db.connect();
         try{
           await client.query("begin");
@@ -130,7 +130,6 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
         }
         slides.push(slide);
       }
-      if(generateSlideImages)await generateSlideImages({title:project.topic,slides},dir);
       for(const slide of slides){
         if(slide.imagePath&&!slide.imageData&&fs.existsSync(slide.imagePath)){
           slide.imageData=fs.readFileSync(slide.imagePath);
