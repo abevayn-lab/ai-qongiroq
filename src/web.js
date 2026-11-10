@@ -126,6 +126,7 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
       await createPdf({title:project.topic||slides[0].title,subtitle:"SLAYD AI orqali tayyorlandi",slides},pdfPath);
       await bot.api.sendDocument(Number(project.telegram_user_id),new InputFile(pdfPath,fileName(project.file_name)),{caption:"✅ Click to'lovi tasdiqlandi. Taqdimotingiz tayyor va Telegram chatga yuborildi!"});
       await db.query("update public.slayd_projects set status='completed',pdf_path=$1,error_message=null,updated_at=now() where id=$2",[fileName(project.file_name),projectId]);
+      try{await db.query("update public.slayd_slides set image_data=null,image_mime=null where project_id=$1",[projectId]);}catch(cleanupError){console.warn("Paid image cleanup:",cleanupError.message);}
     }catch(error){
       await db.query("update public.slayd_projects set status='paid',error_message=$1,updated_at=now() where id=$2",[String(error.message).slice(0,1000),projectId]);
       throw error;
@@ -190,6 +191,7 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
         url.searchParams.set("return_url",String(webAppUrl));
         await db.query("update public.slayd_payments set payment_url=$1 where merchant_trans_id=$2",[url.toString(),merchantTransId]);
         await db.query("update public.slayd_projects set status='awaiting_payment',updated_at=now() where id=$1 and telegram_user_id=$2",[pid,uid]);
+      try{await db.query("update public.slayd_slides set image_data=null,image_mime=null where project_id=$1",[pid]);}catch(cleanupError){console.warn("Free image cleanup:",cleanupError.message);}
         return res.json({ok:true,paymentRequired:true,paymentUrl:url.toString(),message:"Click orqali to'lovni yakunlang. To'lov tasdiqlangach PDF Telegramga yuboriladi."});
       }
 
