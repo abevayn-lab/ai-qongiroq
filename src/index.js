@@ -169,16 +169,16 @@ bot.command("status", async (ctx) => {
     !CLICK_SERVICE_ID && "CLICK_SERVICE_ID",
     !CLICK_MERCHANT_ID && "CLICK_MERCHANT_ID",
     !CLICK_SECRET_KEY && "CLICK_SECRET_KEY",
-    !Number.isSafeInteger(Number(SLIDE_PRICE_UZS)) && "SLIDE_PRICE_UZS"
+    !(Number.isSafeInteger(Number(SLIDE_PRICE_UZS)) && Number(SLIDE_PRICE_UZS) > 0) && "SLIDE_PRICE_UZS"
   ].filter(Boolean);
   await ctx.reply(
-    "🔎 SLAYD AI — TEXNIK HOLAT\\n\\n" +
-    "🌐 Web App URL: " + (validWebAppUrl(WEB_APP_URL) ? "✅ sozlangan" : "❌ WEB_APP_URL kerak") + "\\n" +
-    "🗄 Supabase: " + database + "\\n" +
-    "🤖 AI: " + ((GROQ_API_KEY || GEMINI_API_KEY) ? "✅ kalit bor" : "❌ kalit yo‘q") + "\\n" +
-    "🖼 AI rasm modeli: " + (GEMINI_API_KEY ? "sozlangan (" + GEMINI_IMAGE_MODEL + ")" : "❌ GEMINI_API_KEY kerak") + "\\n" +
-    "💳 Click: " + (missingClick.length ? "❌ " + missingClick.join(", ") : "✅ sozlangan") + "\\n" +
-    "📢 Majburiy kanal: " + (REQUIRED_CHANNEL ? "yoqilgan" : "o‘chirilgan") + "\\n" +
+    "🔎 SLAYD AI — TEXNIK HOLAT\n\n" +
+    "🌐 Web App URL: " + (validWebAppUrl(WEB_APP_URL) ? "✅ sozlangan" : "❌ WEB_APP_URL kerak") + "\n" +
+    "🗄 Supabase: " + database + "\n" +
+    "🤖 AI: " + ((GROQ_API_KEY || GEMINI_API_KEY) ? "✅ kalit bor" : "❌ kalit yo‘q") + "\n" +
+    "🖼 AI rasm modeli: " + (GEMINI_API_KEY ? "sozlangan (" + GEMINI_IMAGE_MODEL + ")" : "❌ GEMINI_API_KEY kerak") + "\n" +
+    "💳 Click: " + (missingClick.length ? "❌ " + missingClick.join(", ") : "✅ sozlangan") + "\n" +
+    "📢 Majburiy kanal: " + (REQUIRED_CHANNEL ? "yoqilgan" : "o‘chirilgan") + "\n" +
     "🧪 Bepul testerlar: " + freeTesterIds.size
   );
 });
