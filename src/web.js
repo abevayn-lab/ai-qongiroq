@@ -191,13 +191,13 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
         url.searchParams.set("return_url",String(webAppUrl));
         await db.query("update public.slayd_payments set payment_url=$1 where merchant_trans_id=$2",[url.toString(),merchantTransId]);
         await db.query("update public.slayd_projects set status='awaiting_payment',updated_at=now() where id=$1 and telegram_user_id=$2",[pid,uid]);
-      try{await db.query("update public.slayd_slides set image_data=null,image_mime=null where project_id=$1",[pid]);}catch(cleanupError){console.warn("Free image cleanup:",cleanupError.message);}
         return res.json({ok:true,paymentRequired:true,paymentUrl:url.toString(),message:"Click orqali to'lovni yakunlang. To'lov tasdiqlangach PDF Telegramga yuboriladi."});
       }
 
       await createPdf({title,subtitle:"SLAYD AI orqali tayyorlandi",slides},pdf);
       await bot.api.sendDocument(uid,new InputFile(pdf,name),{caption:"✅ Taqdimotingiz tayyor va Telegram chatga yuborildi!"});
       await db.query("update public.slayd_projects set status='completed',pdf_path=$1,updated_at=now() where id=$2 and telegram_user_id=$3",[name,pid,uid]);
+      try{await db.query("update public.slayd_slides set image_data=null,image_mime=null where project_id=$1",[pid]);}catch(cleanupError){console.warn("Free image cleanup:",cleanupError.message);}
       res.json({ok:true,message:"PDF Telegram chatga yuborildi."});
     }catch(e){
       console.error("Web finish:",e);
