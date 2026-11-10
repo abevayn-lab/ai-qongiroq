@@ -251,7 +251,7 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
         await db.query("update public.slayd_payments set status='failed',provider_payload=$1,updated_at=now() where id=$2",
           [JSON.stringify(p),payment.id]);
         await db.query("update public.slayd_projects set status='failed',error_message='Click payment failed',updated_at=now() where id=$1",[payment.project_id]);
-        return res.status(200).json(responseBase);
+        return fail(-9,"Transaction cancelled");
       }
       await db.query("update public.slayd_payments set status='paid',click_trans_id=$1,click_paydoc_id=$2,provider_payload=$3,paid_at=now(),updated_at=now() where id=$4",
         [clickTransId,p.click_paydoc_id?Number(p.click_paydoc_id):null,JSON.stringify(p),payment.id]);
