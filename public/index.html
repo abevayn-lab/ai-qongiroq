@@ -1,6 +1,32 @@
 <!doctype html><html lang="uz"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#101b35"><title>SLAYD AI</title><script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
-:root{color-scheme:dark;--bg:#0b1223;--panel:#131f38;--line:#2b3c5e;--text:#f4f7ff;--muted:#a9b7d0;--blue:#477cff;--cyan:#37d0df}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 90% 0,#1c3156 0,transparent 35%),var(--bg);color:var(--text);font:15px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;min-height:100vh}main{max-width:760px;margin:auto;padding:22px 16px 40px}.brand{display:flex;align-items:center;gap:12px;margin:8px 0 24px}.logo{width:44px;height:44px;border-radius:14px;background:linear-gradient(135deg,var(--blue),var(--cyan));display:grid;place-items:center;font-weight:900;color:#071326;font-size:18px}.brand b{font-size:19px}.brand small{display:block;color:var(--muted);margin-top:3px}h1{font-size:26px;line-height:1.15;margin:0 0 8px}.sub{color:var(--muted);line-height:1.5;margin:0 0 22px}.panel{background:rgba(19,31,56,.94);border:1px solid var(--line);border-radius:20px;padding:18px;margin:14px 0}label{display:block;font-weight:650;font-size:13px;margin:0 0 8px;color:#dbe6fa}input,textarea,select{width:100%;border:1px solid #344766;background:#0d172b;color:var(--text);border-radius:12px;padding:13px;font:inherit;outline:none}textarea{min-height:85px;resize:vertical;line-height:1.5}input:focus,textarea:focus{border-color:var(--cyan)}.field{margin:15px 0}.hint,.small{color:var(--muted);font-size:12px;margin-top:7px}button{border:0;border-radius:13px;padding:14px 17px;background:linear-gradient(100deg,var(--blue),#3d9ce8);color:white;font-weight:750;font-size:15px;width:100%;cursor:pointer}button:disabled{opacity:.5;cursor:wait}.hidden{display:none!important}.status{padding:12px;border-radius:12px;background:#142944;color:#bdeaf4;margin:14px 0;line-height:1.45}.error{background:#452531;color:#ffd5d5}.success{background:#173a35;color:#c4ffea}.slide{border:1px solid var(--line);border-radius:16px;padding:15px;margin:13px 0;background:#101b30}.slidehead{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.slidehead strong{color:var(--cyan)}.slide textarea{min-height:65px;margin:7px 0}.preview{width:100%;max-height:180px;object-fit:contain;background:#0b1223;border-radius:10px;margin-top:9px}
+:root{color-scheme:light;--bg:#f5f7fb;--panel:#fff;--line:#e5e9f0;--text:#172033;--muted:#687386;--blue:#315efb;--cyan:#18a9b7;--soft:#eef3ff}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;min-height:100vh}
+main{max-width:820px;margin:auto;padding:24px 17px 48px}
+.brand{display:flex;align-items:center;gap:12px;margin:5px 0 30px}
+.logo{width:44px;height:44px;border-radius:14px;background:#172033;display:grid;place-items:center;font-weight:900;color:#fff;font-size:18px}
+.brand b{font-size:19px;letter-spacing:-.3px}.brand small{display:block;color:var(--muted);margin-top:3px}
+h1{font-size:clamp(25px,5vw,34px);letter-spacing:-1px;line-height:1.12;margin:0 0 9px}
+.sub{color:var(--muted);line-height:1.6;margin:0 0 23px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:22px;padding:20px;margin:15px 0;box-shadow:0 8px 28px rgba(20,35,65,.045)}
+label{display:block;font-weight:700;font-size:13px;margin:0 0 8px;color:#344054}
+input,textarea,select{width:100%;border:1px solid #d9e0ea;background:#fff;color:var(--text);border-radius:12px;padding:13px;font:inherit;outline:none}
+textarea{min-height:90px;resize:vertical;line-height:1.55}
+input:focus,textarea:focus,select:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(49,94,251,.1)}
+.field{margin:15px 0}.hint,.small{color:var(--muted);font-size:12px;margin-top:8px}
+button{border:0;border-radius:13px;padding:14px 17px;background:var(--blue);color:white;font-weight:750;font-size:15px;width:100%;cursor:pointer;transition:transform .15s,opacity .15s}
+button:active{transform:scale(.99)}button:disabled{opacity:.5;cursor:wait}
+.hidden{display:none!important}
+.status{padding:13px 15px;border-radius:13px;background:#edf3ff;color:#284a9b;margin:14px 0;line-height:1.5;border:1px solid #dce7ff}
+.error{background:#fff0f0;color:#a12b36;border-color:#ffd9dc}.success{background:#eaf8f2;color:#176448;border-color:#cdeee0}
+.slide{border:1px solid var(--line);border-radius:17px;padding:16px;margin:14px 0;background:#fff}
+.slidehead{display:flex;justify-content:space-between;align-items:center;margin-bottom:13px}
+.slidehead strong{color:var(--blue);font-size:12px;letter-spacing:.7px}
+.slide textarea{min-height:65px;margin:7px 0}
+.preview{width:100%;max-height:220px;object-fit:contain;background:#f4f6fa;border:1px solid var(--line);border-radius:12px;margin-top:10px}
+button.secondary{background:#f0f4ff;color:#315efb;border:1px solid #dce5ff;margin:8px 0}
+@media(min-width:640px){main{padding-top:34px}.panel{padding:25px}}
 </style></head><body><main><div class="brand"><div class="logo">S</div><div><b>SLAYD AI</b><small>AI taqdimot muharriri</small></div></div>
 <section id="start"><h1>G‘oyangizni taqdimotga aylantiring</h1><p class="sub">Mavzuni yozing. AI 8 ta slayd tayyorlaydi. Matnlarni tahrirlab, rasmlar qo‘shib, PDFni Telegram chatga olasiz.</p><div class="panel"><div class="field"><label for="topic">Taqdimot mavzusi</label><textarea id="topic" maxlength="2000" placeholder="Masalan: O‘zbekiston iqtisodiyotida turizmning o‘rni"></textarea></div><div class="field"><label for="filename">PDF fayl nomi</label><input id="filename" maxlength="90" value="Mening_taqdimotim"></div><button id="generate">✨ 8 ta slayd yaratish</button><p class="hint">Yaratilgandan keyin sarlavha, matn va rasmlarni tahrirlashingiz mumkin.</p></div></section>
 <section id="editor" class="hidden"><h1>Slaydlarni tahrirlash</h1><p class="sub">Kerakli slaydga JPG yoki PNG rasm yuklang. Rasm PDF ichiga joylanadi.</p><div class="panel"><div class="field"><label for="editfilename">PDF fayl nomi</label><input id="editfilename" maxlength="90"></div><div id="slides"></div><button id="finish">📄 PDF tayyorlash va Telegramga yuborish</button></div></section><div id="status" class="status hidden"></div></main>
