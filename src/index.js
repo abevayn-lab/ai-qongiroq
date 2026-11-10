@@ -597,17 +597,27 @@ bot.on("message:text", async (ctx) => {
   }
 });
 
-bot.on("message:photo", async (ctx) => {
-  if (!(await requireAccess(ctx))) return;
-  if (!isFreeTester(ctx.from.id)) return ctx.reply("Rasmli taqdimot yaratish va tolov uchun /webapp buyrugini bosing.");
+bot.on("message:photo", async ctx => {
+ if(!(await requireAccess(ctx))) return;
+ if(!db) return ctx.reply("Baza ulanmagan.");
+ if(!isFreeTester(ctx.from.id)){
   try {
-    const extracted = await extractImageText(ctx);
-    const caption = ctx.message.caption || "";
-    await generateAndSend(ctx, [caption, extracted.text].filter(Boolean).join("\n\n"), { imageBuffer: extracted.imageBuffer });
-  } catch (error) {
-    console.error(error);
-    await ctx.reply("❌ Rasmni o'qishda yoki taqdimot yaratishda xatolik bo'ldi. Aniqroq rasm yuboring.");
-  }
+   const r=await db.query("select id,order_code,amount_uzs from public.slayd_payments where telegram_user_id=$1 and provider='manual' and status in ('pending','rejected') order by created_at desc limit 1",[Number(ctx.from.id)]);
+   if(!r.rowCount) return ctx.reply("Avval Web Appda taqdimotni yakunlang, keyin chek yuboring.");
+   const ch=await db.query("select setting_value from public.slayd_settings where setting_key='payment_review_chat_id'");
+   if(!ch.rowCount) return ctx.reply("Chek kanali admin tomonidan sozlanmagan.");
+   const p=r.rows[0],file=ctx.message.photo[ctx.message.photo.length-1].file_id;
+   await db.query("update public.slayd_payments set status='pending',receipt_file_id=$1,updated_at=now() where id=$2",[file,p.id]);
+   const kb=new InlineKeyboard().text("Tasdiqlash","payok:"+p.id).text("Rad etish","payno:"+p.id);
+   const sent=await bot.api.sendPhoto(ch.rows[0].setting_value,file,{caption:"YANGI CHEK\nBuyurtma: "+(p.order_code||p.id)+"\nFoydalanuvchi: "+ctx.from.id+"\nSumma: "+p.amount_uzs+" so‘m",reply_markup:kb});
+   await db.query("update public.slayd_payments set review_chat_id=$1,review_message_id=$2 where id=$3",[ch.rows[0].setting_value,sent.message_id,p.id]);
+   return ctx.reply("Chek adminga yuborildi. Tasdiqlangach PDF keladi.");
+  } catch(e){console.error("Receipt:",e);return ctx.reply("Chek yuborilmadi. Qayta urinib ko‘ring.");}
+ }
+ const extracted=await extractImageText(ctx);
+ const caption=ctx.message.caption||"";
+ try { await generateAndSend(ctx,[caption,extracted.text].filter(Boolean).join("\n\n"),{imageBuffer:extracted.imageBuffer}); }
+ catch(e){console.error(e);await ctx.reply("Rasmni qayta yuboring yoki mavzuni matn bilan kiriting.");}
 });
 
 bot.catch((error) => console.error("Bot xatosi:", error));
