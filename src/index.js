@@ -373,16 +373,19 @@ function createPdf(data, outputPath) {
         doc.fillColor(C.ink).font("Helvetica-Bold").fontSize(27).text(safe(slide.title), 58, 76, { width: 820, height: 72, ellipsis: true });
         doc.roundedRect(58, 153, 64, 4, 2).fill(C.cyan);
         const bullets = slide.bullets.length ? slide.bullets : ["Ushbu bo'lim bo'yicha qo'shimcha ma'lumot."];
+        const imageLeft = Boolean(slide.imagePath && slide.imagePosition === "left");
+        const cardX = imageLeft ? 330 : 58;
+        const cardW = imageLeft ? 572 : 844;
         const top = 185, gap = 12, cardH = Math.min(78, (280 - gap * (bullets.length - 1)) / bullets.length);
         bullets.forEach((item, j) => {
           const y = top + j * (cardH + gap);
-          doc.roundedRect(58, y, 844, cardH, 12).fill(C.white);
-          doc.roundedRect(58, y, 5, cardH, 2).fill(j % 2 ? C.cyan : C.blue);
-          doc.circle(91, y + cardH / 2, 12).fill(j % 2 ? C.paleCyan : C.pale);
-          doc.fillColor(C.blue).font("Helvetica-Bold").fontSize(10).text(String(j + 1).padStart(2, "0"), 82, y + cardH / 2 - 4, { width: 18, align: "center" });
-          doc.fillColor(C.ink).font("Helvetica").fontSize(cardH < 52 ? 13 : 15).text(safe(item), 119, y + 12, { width: slide.imagePath ? 485 : 750, height: cardH - 18, ellipsis: true, lineGap: 3 });
+          doc.roundedRect(cardX, y, cardW, cardH, 12).fill(C.white);
+          doc.roundedRect(cardX, y, 5, cardH, 2).fill(j % 2 ? C.cyan : C.blue);
+          doc.circle(cardX + 33, y + cardH / 2, 12).fill(j % 2 ? C.paleCyan : C.pale);
+          doc.fillColor(C.blue).font("Helvetica-Bold").fontSize(10).text(String(j + 1).padStart(2, "0"), cardX + 24, y + cardH / 2 - 4, { width: 18, align: "center" });
+          doc.fillColor(C.ink).font("Helvetica").fontSize(cardH < 52 ? 13 : 15).text(safe(item), cardX + 61, y + 12, { width: slide.imagePath ? 485 : 750, height: cardH - 18, ellipsis: true, lineGap: 3 });
         });
-        if (slide.imagePath && fs.existsSync(slide.imagePath)) { try { doc.image(slide.imagePath, 650, 190, { fit: [235, 235] }); } catch (e) { console.warn("Slide image:", e.message); } }
+        if (slide.imagePath && fs.existsSync(slide.imagePath)) { try { doc.image(slide.imagePath, imageLeft ? 58 : 650, 190, { fit: [235, 235] }); } catch (e) { console.warn("Slide image:", e.message); } }
         doc.moveTo(58, 492).lineTo(902, 492).strokeColor(C.line).lineWidth(1).stroke();
         doc.fillColor(C.muted).font("Helvetica").fontSize(9).text("SLAYD AI  •  O'QUV TAQDIMOTI", 58, 505);
         doc.fillColor(C.muted).font("Helvetica-Bold").fontSize(10).text(String(index + 1).padStart(2, "0") + " / " + String(data.slides.length).padStart(2, "0"), 820, 503, { width: 80, align: "right" });
