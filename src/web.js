@@ -69,7 +69,7 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
   }));
   app.get("/api/status",auth,asyncRoute(async(req,res)=>{
     const member=await channelMember(Number(req.tgUser.id));
-    const clickReady=Boolean(clickServiceId&&clickMerchantId&&clickSecretKey&&Number.isSafeInteger(Number(slidePriceUzs))&&Number(slidePriceUzs)>0&&webAppUrl);
+    const clickReady=Boolean(clickServiceId&&clickMerchantId&&clickMerchantUserId&&clickSecretKey&&Number.isSafeInteger(Number(slidePriceUzs))&&Number(slidePriceUzs)>0&&webAppUrl);
     res.json({ok:true,channelRequired:Boolean(requiredChannel),channelMember:member,free:isFreeUser(req.tgUser.id),clickReady,priceUzs:clickReady?Number(slidePriceUzs):null});
   }));
   app.post("/api/generate",auth,limit,asyncRoute(async(req,res)=>{
