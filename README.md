@@ -1,26 +1,20 @@
-# AI Qo'ng'iroq
+# SLAYD AI
 
-Telegram bot for paid birthday greeting call requests. The first version collects order details and payment proof, then lets an administrator approve or reject the payment.
+Telegram bot that turns a student's topic or a photo of an assignment/book page into an 8-slide presentation PDF.
+
+## Requirements
+- Node.js 20+
+- Telegram bot token from @BotFather
+- OpenAI API key
 
 ## Setup
 1. Copy `.env.example` to `.env`.
-2. Set `BOT_TOKEN` from BotFather.
-3. Set `ADMIN_TELEGRAM_ID` to your numeric Telegram user ID.
-4. Add a PostgreSQL `DATABASE_URL`.
-5. Set payment card details and `CALL_PRICE_UZS`.
-6. Run `npm install && npm start`.
+2. Add `BOT_TOKEN` and `OPENAI_API_KEY`.
+3. Install dependencies: `npm install`
+4. Start: `npm start`
 
-The app exposes `/health` and listens on `PORT`.
+The bot accepts either a text topic or a photo with an optional caption. It generates an 8-slide landscape PDF and sends it back in Telegram.
 
-## Customer flow
-- Start with `/start`; create an order using `/buyurtma`.
-- Enter recipient name and Uzbekistan (+998) phone number.
-- Confirm that the recipient has agreed to receive an automated AI call.
-- Pay manually and send the receipt photo.
-- Admin reviews the receipt and approves or rejects it.
-
-## Admin
-Use `/admin` in Telegram to view order counts. New receipts are sent to the configured admin account with approve/reject buttons.
-
-## Phone calls
-**Outbound calls are not enabled yet.** Before calls can be placed, connect a legitimate telephony/SIP provider supporting calls to Uzbekistan (+998), verify the caller ID/number, and connect an AI speech service. Do not place calls without recipient consent. Payment approval does not mean a call has been placed.
+## Notes
+- Never commit your real `.env` file.
+- The first MVP creates clean text-based slides. Uploaded photos are used as source material, not embedded as slide backgrounds.
