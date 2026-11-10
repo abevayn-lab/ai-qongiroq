@@ -6,7 +6,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
-const { BOT_TOKEN, GEMINI_API_KEY, GEMINI_MODEL = "gemini-2.5-flash" } = process.env;
+const { BOT_TOKEN, GEMINI_API_KEY, GEMINI_MODEL = "gemini-3.8-flash" } = process.env;
 
 if (!BOT_TOKEN || !GEMINI_API_KEY) {
   console.error("BOT_TOKEN va GEMINI_API_KEY .env faylida bo'lishi kerak.");
