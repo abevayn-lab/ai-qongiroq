@@ -69,7 +69,7 @@ bot.command("admin", async (ctx) => {
     `);
     const s = result.rows[0];
     await ctx.reply(
-      "📊 SLAYD AI — ADMIN PANEL\\n\\n" +
+      "📊 SLAYD AI — ADMIN PANEL\n\n" +
       "👥 Jami foydalanuvchilar: " + s.users_total + "\n" +
       "🆕 Bugun qo‘shilganlar: " + s.users_today + "\n" +
       "📄 Jami buyurtmalar: " + s.projects_total + "\n" +
@@ -85,7 +85,7 @@ bot.command("admin", async (ctx) => {
 });
 
 bot.command("id", async (ctx) => {
-  await ctx.reply("Telegram ID raqamingiz: " + ctx.from.id + "\\nBu raqamni Railway Variables ichida ADMIN_TELEGRAM_ID qiymati sifatida saqlang.");
+  await ctx.reply("Telegram ID raqamingiz: " + ctx.from.id + "\nBu raqamni Railway Variables ichida ADMIN_TELEGRAM_ID qiymati sifatida saqlang.");
 });
 
 bot.command("start", async (ctx) => {
