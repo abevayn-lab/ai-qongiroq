@@ -552,7 +552,6 @@ async function generateAndSend(ctx, source, options = {}) {
       fs.writeFileSync(sourceImagePath, options.imageBuffer, { flag: "wx" });
       data.slides[0].imagePath = sourceImagePath;
     }
-    await generateSlideImages(data, jobDir);
     if (db && projectId) {
       const client = await db.connect();
       try {
