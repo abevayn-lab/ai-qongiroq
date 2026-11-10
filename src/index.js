@@ -8,7 +8,7 @@ const path = require("path");
 const { startWebApp } = require("./web");
 const { Pool } = require("pg");
 
-const { BOT_TOKEN, GROQ_API_KEY, GROQ_MODEL = "openai/gpt-oss-120b", GEMINI_API_KEY, GEMINI_MODEL = "gemini-3.8-flash", GEMINI_IMAGE_MODEL = "gemini-3.1-flash-lite-image", DATABASE_URL, ADMIN_TELEGRAM_ID, WEB_APP_URL, REQUIRED_CHANNEL, REQUIRED_CHANNEL_URL, FREE_TESTER_IDS = "" } = process.env;
+const { BOT_TOKEN, GROQ_API_KEY, GROQ_MODEL = "openai/gpt-oss-120b", GEMINI_API_KEY, GEMINI_MODEL = "gemini-3.8-flash", GEMINI_IMAGE_MODEL = "gemini-3.1-flash-lite-image", DATABASE_URL, ADMIN_TELEGRAM_ID, WEB_APP_URL, REQUIRED_CHANNEL, REQUIRED_CHANNEL_URL, FREE_TESTER_IDS = "", CLICK_SERVICE_ID, CLICK_MERCHANT_ID, CLICK_MERCHANT_USER_ID, CLICK_SECRET_KEY, SLIDE_PRICE_UZS } = process.env;
 
 if (!BOT_TOKEN || (!GROQ_API_KEY && !GEMINI_API_KEY)) {
   console.error("BOT_TOKEN va kamida bitta AI API kaliti kerak.");
@@ -65,10 +65,6 @@ async function isChannelMember(userId) {
   }
 }
 async function requireAccess(ctx) {
-  if (!isFreeTester(ctx.from?.id)) {
-    await ctx.reply("💳 Hozircha sinov rejimi. Bepul sinovga faqat admin va ruxsat berilgan test akkauntlari kira oladi. Click to'lovi ulanmoqda.");
-    return false;
-  }
   if (!(await isChannelMember(ctx.from.id))) {
     const url = REQUIRED_CHANNEL_URL || (REQUIRED_CHANNEL.startsWith("@") ? "https://t.me/" + REQUIRED_CHANNEL.slice(1) : "");
     const keyboard = new InlineKeyboard();
@@ -426,6 +422,7 @@ async function generateAndSend(ctx, source, options = {}) {
 
 bot.on("message:text", async (ctx) => {
   if (!(await requireAccess(ctx))) return;
+  if (!isFreeTester(ctx.from.id)) return ctx.reply("Oddiy foydalanuvchilar taqdimotni Web App orqali yaratib, Click orqali tolov qiladi. /webapp buyrugini bosing.");
   const text = ctx.message.text.trim();
   if (text.startsWith("/")) return;
   if (text.length < 4) return ctx.reply("Mavzuni biroz batafsilroq yozing.");
@@ -439,6 +436,7 @@ bot.on("message:text", async (ctx) => {
 
 bot.on("message:photo", async (ctx) => {
   if (!(await requireAccess(ctx))) return;
+  if (!isFreeTester(ctx.from.id)) return ctx.reply("Rasmli taqdimot yaratish va tolov uchun /webapp buyrugini bosing.");
   try {
     const extracted = await extractImageText(ctx);
     const caption = ctx.message.caption || "";
@@ -450,6 +448,6 @@ bot.on("message:photo", async (ctx) => {
 });
 
 bot.catch((error) => console.error("Bot xatosi:", error));
-startWebApp({ bot, db, makeSlides, createPdf, generateSlideImages, InputFile, botToken: BOT_TOKEN, requiredChannel: REQUIRED_CHANNEL, freeTesterIds: FREE_TESTER_IDS, adminTelegramId: ADMIN_TELEGRAM_ID });
+startWebApp({ bot, db, makeSlides, createPdf, generateSlideImages, InputFile, botToken: BOT_TOKEN, requiredChannel: REQUIRED_CHANNEL, freeTesterIds: FREE_TESTER_IDS, adminTelegramId: ADMIN_TELEGRAM_ID, clickServiceId: CLICK_SERVICE_ID, clickMerchantId: CLICK_MERCHANT_ID, clickMerchantUserId: CLICK_MERCHANT_USER_ID, clickSecretKey: CLICK_SECRET_KEY, slidePriceUzs: SLIDE_PRICE_UZS, webAppUrl: WEB_APP_URL });
 bot.start();
 console.log("SLAYD AI bot ishga tushdi.");
