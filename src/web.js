@@ -34,7 +34,7 @@ function cleanSlide(s,i) {
   if(!title||!bullets.length) throw new Error((i+1)+"-slayd sarlavhasi yoki matni bo'sh.");
   return {title,bullets,speaker_notes:String(s.speaker_notes||"").slice(0,2000)};
 }
-function startWebApp({bot,db,makeSlides,createPdf,InputFile,botToken}) {
+function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,botToken}) {
   const app=express(); app.disable("x-powered-by"); app.use(express.json({limit:"24mb"}));
   app.use(express.static(path.join(__dirname,"../public"),{extensions:["html"]}));
   const rate=new Map();
@@ -74,6 +74,7 @@ function startWebApp({bot,db,makeSlides,createPdf,InputFile,botToken}) {
         if(input[i].imageData){const m=/^data:image\/(png|jpeg);base64,([A-Za-z0-9+/=]+)$/.exec(input[i].imageData);if(!m)throw new Error((i+1)+"-slayd rasmi PNG yoki JPG bo'lishi kerak.");const bytes=Buffer.from(m[2],"base64");if(bytes.length>5*1024*1024)throw new Error("Rasm 5 MB dan katta.");const img=path.join(dir,"slide-"+(i+1)+(m[1]==="png"?".png":".jpg"));fs.writeFileSync(img,bytes,{flag:"wx"});s.imagePath=img;}
         slides.push(s);
       }
+      if (generateSlideImages) await generateSlideImages({title,slides},dir);
       await createPdf({title,subtitle:"SLAYD AI orqali tayyorlandi",slides},pdf);
       await bot.api.sendDocument(uid,new InputFile(pdf,name),{caption:"✅ Taqdimotingiz tayyor va Telegram chatga yuborildi!"});
       const client=await db.connect();
