@@ -3,7 +3,7 @@ const os = require("os");
 const path = require("path");
 const { spawnSync } = require("child_process");
 const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
-const matches = [...html.matchAll(/<script(?:\\s[^>]*)?>([\\s\\S]*?)<\\/script>/gi)].filter(m => m[1].trim());
+const matches = [...html.matchAll(/<script>([\s\S]*?)<\/script>/gi)].filter(m => m[1].trim());
 if (!matches.length) throw new Error("Web App inline JavaScript topilmadi.");
 for (let i = 0; i < matches.length; i++) {
   const file = path.join(os.tmpdir(), "slayd-web-check-" + process.pid + "-" + i + ".js");
