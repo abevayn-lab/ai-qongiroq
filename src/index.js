@@ -448,7 +448,7 @@ function createPdf(data, outputPath) {
       const cover=index===0;
       if(cover) {
         doc.rect(0,0,12,540).fill(C.blue);
-        doc.fillColor(C.blue).font("Helvetica-Bold").fontSize(11).text("SLAYD AI  /  STUDENT PRESENTATION",64,52,{characterSpacing:1.7});
+        doc.fillColor(C.blue).font("Helvetica-Bold").fontSize(11).text("TAQDIMOT",64,52,{characterSpacing:1.7});
         doc.fillColor(C.ink).font("Helvetica-Bold").fontSize(39).text(safe(slide.title||data.title||"Taqdimot"),64,116,{width:hasImage(slide)?475:720,height:150,ellipsis:true,lineGap:5});
         doc.roundedRect(65,284,78,5,2).fill(C.teal);
         doc.fillColor(C.muted).font("Helvetica").fontSize(17).text(safe(data.subtitle||"Mavzu bo'yicha tayyorlangan taqdimot"),65,310,{width:hasImage(slide)?440:680,height:55,ellipsis:true});
@@ -459,12 +459,12 @@ function createPdf(data, outputPath) {
         });
         if(hasImage(slide)) addImage(slide,575,105,315,300);
         doc.moveTo(64,485).lineTo(896,485).strokeColor(C.line).lineWidth(1).stroke();
-        doc.fillColor(C.muted).font("Helvetica").fontSize(10).text("SLAYD AI  •  8 SLAYD",64,502);
+        doc.fillColor(C.muted).font("Helvetica").fontSize(10).text("TAQDIMOT",64,502);
         doc.text("01 / 08",820,502,{width:76,align:"right"});
       } else {
         const image=hasImage(slide);
         const imageLeft=image&&slide.imagePosition==="left";
-        doc.fillColor(C.blue).font("Helvetica-Bold").fontSize(10).text("SLAYD AI  /  TAQDIMOT",58,34,{characterSpacing:1.4});
+        doc.fillColor(C.blue).font("Helvetica-Bold").fontSize(10).text("TAQDIMOT",58,34,{characterSpacing:1.4});
         doc.fillColor(C.muted).font("Helvetica-Bold").fontSize(10).text("BO'LIM  "+String(index).padStart(2,"0"),790,34,{width:110,align:"right"});
         doc.fillColor(C.ink).font("Helvetica-Bold").fontSize(29).text(safe(slide.title),58,75,{width:844,height:70,ellipsis:true});
         doc.roundedRect(58,151,68,4,2).fill(index%2?C.teal:C.blue);
@@ -541,7 +541,7 @@ async function generateAndSend(ctx, source, options = {}) {
     }
     await createPdf(data, outputPath);
     await ctx.replyWithDocument(new InputFile(outputPath, "slayd-ai-taqdimot.pdf"), {
-      caption: "✅ Taqdimotingiz tayyor! SLAYD AI orqali yaratildi."
+      caption: "✅ Taqdimotingiz tayyor!"
     });
     if (db && projectId) await db.query("update public.slayd_projects set status='completed',pdf_path=$1,updated_at=now() where id=$2", ["slayd-ai-taqdimot.pdf", projectId]);
     if (db && projectId) { try { await db.query("update public.slayd_slides set image_data=null,image_mime=null where project_id=$1", [projectId]); } catch (cleanupError) { console.warn("Slide image cleanup:", cleanupError.message); } }
