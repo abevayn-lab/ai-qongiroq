@@ -5,8 +5,9 @@ const PDFDocument = require("pdfkit");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+const { Pool } = require("pg");
 
-const { BOT_TOKEN, GROQ_API_KEY, GROQ_MODEL = "openai/gpt-oss-120b", GEMINI_API_KEY, GEMINI_MODEL = "gemini-3.8-flash" } = process.env;
+const { BOT_TOKEN, GROQ_API_KEY, GROQ_MODEL = "openai/gpt-oss-120b", GEMINI_API_KEY, GEMINI_MODEL = "gemini-3.8-flash", DATABASE_URL, ADMIN_TELEGRAM_ID } = process.env;
 
 if (!BOT_TOKEN || (!GROQ_API_KEY && !GEMINI_API_KEY)) {
   console.error("BOT_TOKEN va kamida bitta AI API kaliti kerak.");
@@ -14,6 +15,73 @@ if (!BOT_TOKEN || (!GROQ_API_KEY && !GEMINI_API_KEY)) {
 }
 
 const bot = new Bot(BOT_TOKEN);
+
+const db = DATABASE_URL ? new Pool({
+  connectionString: DATABASE_URL,
+  ssl: { rejectUnauthorized: false },
+  max: 10,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 10000
+}) : null;
+
+if (!db) console.warn("DATABASE_URL sozlanmagan. Foydalanuvchilar bazaga yozilmaydi.");
+
+async function saveTelegramUser(ctx) {
+  if (!db || !ctx.from) return;
+  const telegramId = Number(ctx.from.id);
+  const adminId = ADMIN_TELEGRAM_ID ? Number(ADMIN_TELEGRAM_ID) : null;
+  await db.query(
+    `insert into public.slayd_users (telegram_id, username, first_name, last_name, is_admin, last_seen_at)
+     values ($1, $2, $3, $4, $5, now())
+     on conflict (telegram_id) do update set
+       username = excluded.username,
+       first_name = excluded.first_name,
+       last_name = excluded.last_name,
+       is_admin = public.slayd_users.is_admin or excluded.is_admin,
+       last_seen_at = now()`,
+    [telegramId, ctx.from.username || null, ctx.from.first_name || null, ctx.from.last_name || null, Boolean(adminId && telegramId === adminId)]
+  );
+}
+
+bot.use(async (ctx, next) => {
+  try { await saveTelegramUser(ctx); }
+  catch (error) { console.error("Supabase foydalanuvchi yozuvi xatosi:", error.message); }
+  await next();
+});
+
+bot.command("admin", async (ctx) => {
+  const adminId = ADMIN_TELEGRAM_ID ? Number(ADMIN_TELEGRAM_ID) : null;
+  if (!adminId || Number(ctx.from?.id) !== adminId) {
+    return ctx.reply("⛔ Bu buyruq faqat administrator uchun.");
+  }
+  if (!db) return ctx.reply("❌ Baza ulanmagan. DATABASE_URL sozlamasini tekshiring.");
+  try {
+    const result = await db.query(`
+      select
+        (select count(*)::int from public.slayd_users) as users_total,
+        (select count(*)::int from public.slayd_users where created_at::date = current_date) as users_today,
+        (select count(*)::int from public.slayd_projects) as projects_total,
+        (select count(*)::int from public.slayd_projects where created_at::date = current_date) as projects_today,
+        (select count(*)::int from public.slayd_projects where status = 'completed') as projects_completed,
+        (select count(*)::int from public.slayd_projects where status = 'failed') as projects_failed,
+        (select coalesce(sum(amount_uzs), 0)::bigint from public.slayd_payments where status = 'paid') as revenue_uzs
+    `);
+    const s = result.rows[0];
+    await ctx.reply(
+      "📊 SLAYD AI — ADMIN PANEL\\n\\n" +
+      "👥 Jami foydalanuvchilar: " + s.users_total + "\\n" +
+      "🆕 Bugun qo‘shilganlar: " + s.users_today + "\\n" +
+      "📄 Jami buyurtmalar: " + s.projects_total + "\\n" +
+      "📅 Bugungi buyurtmalar: " + s.projects_today + "\\n" +
+      "✅ Tayyor PDF: " + s.projects_completed + "\\n" +
+      "❌ Xatolik: " + s.projects_failed + "\\n" +
+      "💰 Tasdiqlangan tushum: " + Number(s.revenue_uzs).toLocaleString("uz-UZ") + " so‘m"
+    );
+  } catch (error) {
+    console.error("Admin statistika xatosi:", error);
+    await ctx.reply("❌ Statistikani olishda xatolik. Baza jadvallarini tekshiring.");
+  }
+});
 
 bot.command("start", async (ctx) => {
   await ctx.reply(
