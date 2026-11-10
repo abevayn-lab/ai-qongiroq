@@ -48,36 +48,38 @@ function startWebApp({bot,db,makeSlides,createPdf,InputFile,botToken}) {
       const r=await db.query("insert into public.slayd_projects (telegram_user_id,topic,file_name,input_type,image_mode,status,slide_count) values ($1,$2,$3,'web_editor','user','generating',8) returning id",
         [uid,topic,fileName(req.body.fileName)]);pid=r.rows[0].id;
       const data=await makeSlides(topic);
-      await db.query("begin");
+      const client=await db.connect();
       try{
-        for(let i=0;i<data.slides.length;i++){const s=data.slides[i];await db.query("insert into public.slayd_slides (project_id,slide_number,title,body,speaker_notes) values ($1,$2,$3,$4,$5)",[pid,i+1,s.title,(s.bullets||[]).join("\n"),s.speaker_notes||""]);}
-        await db.query("update public.slayd_projects set status='draft',updated_at=now() where id=$1 and telegram_user_id=$2",[pid,uid]);await db.query("commit");
-      }catch(e){await db.query("rollback");throw e;}
+        await client.query("begin");
+        for(let i=0;i<data.slides.length;i++){const s=data.slides[i];await client.query("insert into public.slayd_slides (project_id,slide_number,title,body,speaker_notes) values ($1,$2,$3,$4,$5)",[pid,i+1,s.title,(s.bullets||[]).join("\n"),s.speaker_notes||""]);}
+        await client.query("update public.slayd_projects set status='draft',updated_at=now() where id=$1 and telegram_user_id=$2",[pid,uid]);await client.query("commit");
+      }catch(e){await client.query("rollback");throw e;}finally{client.release();}
       res.json({projectId:pid,title:data.title||topic,subtitle:data.subtitle||"SLAYD AI taqdimoti",slides:data.slides});
     }catch(e){if(pid)try{await db.query("update public.slayd_projects set status='failed',error_message=$1,updated_at=now() where id=$2 and telegram_user_id=$3",[String(e.message).slice(0,1000),pid,uid]);}catch(_){}console.error("Web generate:",e);res.status(500).json({error:"Taqdimot yaratilmadi. Birozdan keyin qayta urinib ko'ring."});}
   });
-  app.post("/api/finish",auth,async(req,res)=>{
+  app.post("/api/finish",auth,limit,async(req,res)=>{
     if(!db)return res.status(503).json({error:"Ma'lumotlar bazasi ulanmagan."});
     const uid=Number(req.tgUser.id),pid=String(req.body?.projectId||""),name=fileName(req.body?.fileName),title=String(req.body?.title||"SLAYD AI").slice(0,160),input=req.body?.slides;
     if(!/^[0-9a-f-]{36}$/i.test(pid)||!Array.isArray(input)||input.length<6||input.length>8)return res.status(400).json({error:"Taqdimot ma'lumotlari noto'g'ri."});
     const dir=fs.mkdtempSync(path.join(os.tmpdir(),"slayd-web-")),pdf=path.join(dir,name);
     try{
-      const own=await db.query("select id from public.slayd_projects where id=$1 and telegram_user_id=$2",[pid,uid]);if(!own.rowCount)return res.status(404).json({error:"Taqdimot topilmadi yoki sizga tegishli emas."});
+      const claim=await db.query("update public.slayd_projects set status='generating',file_name=$1,updated_at=now() where id=$2 and telegram_user_id=$3 and status='draft' returning id",[name,pid,uid]);
+      if(!claim.rowCount)return res.status(409).json({error:"Taqdimot topilmadi, allaqachon yuborilmoqda yoki yakunlangan."});
       const slides=[];
       for(let i=0;i<input.length;i++){
         const s=cleanSlide(input[i],i);
         if(input[i].imageData){const m=/^data:image\\/(png|jpeg);base64,([A-Za-z0-9+/=]+)$/.exec(input[i].imageData);if(!m)throw new Error((i+1)+"-slayd rasmi PNG yoki JPG bo'lishi kerak.");const bytes=Buffer.from(m[2],"base64");if(bytes.length>5*1024*1024)throw new Error("Rasm 5 MB dan katta.");const img=path.join(dir,"slide-"+(i+1)+(m[1]==="png"?".png":".jpg"));fs.writeFileSync(img,bytes,{flag:"wx"});s.imagePath=img;}
         slides.push(s);
       }
-      await db.query("update public.slayd_projects set status='generating',file_name=$1,updated_at=now() where id=$2 and telegram_user_id=$3",[name,pid,uid]);
       await createPdf({title,subtitle:"SLAYD AI orqali tayyorlandi",slides},pdf);
       await bot.api.sendDocument(uid,new InputFile(pdf,name),{caption:"✅ Taqdimotingiz tayyor va Telegram chatga yuborildi!"});
-      await db.query("begin");
+      const client=await db.connect();
       try{
-        await db.query("delete from public.slayd_slides where project_id=$1",[pid]);
-        for(let i=0;i<slides.length;i++){const s=slides[i];await db.query("insert into public.slayd_slides (project_id,slide_number,title,body,speaker_notes,image_path) values ($1,$2,$3,$4,$5,$6)",[pid,i+1,s.title,s.bullets.join("\n"),s.speaker_notes,s.imagePath?path.basename(s.imagePath):null]);}
-        await db.query("update public.slayd_projects set status='completed',pdf_path=$1,updated_at=now() where id=$2 and telegram_user_id=$3",[name,pid,uid]);await db.query("commit");
-      }catch(e){await db.query("rollback");throw e;}
+        await client.query("begin");
+        await client.query("delete from public.slayd_slides where project_id=$1",[pid]);
+        for(let i=0;i<slides.length;i++){const s=slides[i];await client.query("insert into public.slayd_slides (project_id,slide_number,title,body,speaker_notes,image_path) values ($1,$2,$3,$4,$5,$6)",[pid,i+1,s.title,s.bullets.join("\n"),s.speaker_notes,null]);}
+        await client.query("update public.slayd_projects set status='completed',pdf_path=$1,updated_at=now() where id=$2 and telegram_user_id=$3",[name,pid,uid]);await client.query("commit");
+      }catch(e){await client.query("rollback");throw e;}finally{client.release();}
       res.json({ok:true,message:"PDF Telegram chatga yuborildi."});
     }catch(e){console.error("Web finish:",e);try{await db.query("update public.slayd_projects set status='failed',error_message=$1,updated_at=now() where id=$2 and telegram_user_id=$3",[String(e.message).slice(0,1000),pid,uid]);}catch(_){}res.status(500).json({error:e.message||"PDF yaratish yoki yuborishda xatolik."});}
     finally{fs.rmSync(dir,{recursive:true,force:true});}
