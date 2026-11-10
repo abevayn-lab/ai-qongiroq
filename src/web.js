@@ -141,6 +141,19 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
     }
   }
 
+  async function retryPaidDelivery(projectId) {
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        await deliverPaidProject(projectId);
+        return;
+      } catch (error) {
+        console.error("Paid PDF delivery attempt " + attempt + ":", error.message);
+        if (attempt < 3) await new Promise(resolve => setTimeout(resolve, 1500 * attempt));
+      }
+    }
+  }
+
+
   app.post("/api/finish",auth,limit,asyncRoute(async(req,res)=>{
     if(!db)return res.status(503).json({error:"Ma'lumotlar bazasi ulanmagan."});
     const uid=Number(req.tgUser.id),pid=String(req.body?.projectId||""),name=fileName(req.body?.fileName),title=String(req.body?.title||"SLAYD AI").slice(0,160),input=req.body?.slides;
@@ -234,7 +247,7 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
       if(Math.abs(Number(payment.amount_uzs)-amount)>0.01)return fail(-2,"Incorrect parameter amount");
       if(payment.status==="paid"){
         const project=await db.query("select status from public.slayd_projects where id=$1",[payment.project_id]);
-        if(project.rows[0]?.status==="paid")deliverPaidProject(payment.project_id).catch(e=>console.error("Paid PDF retry:",e));
+        if(project.rows[0]?.status==="paid")retryPaidDelivery(payment.project_id).catch(e=>console.error("Paid PDF retry:",e));
         return fail(-4,"Already paid");
       }
       if(payment.status==="failed"||payment.status==="refunded")return fail(-9,"Transaction cancelled");
@@ -257,7 +270,7 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
         [clickTransId,p.click_paydoc_id?Number(p.click_paydoc_id):null,JSON.stringify(p),payment.id]);
       await db.query("update public.slayd_projects set status='paid',updated_at=now() where id=$1",[payment.project_id]);
       res.status(200).json(responseBase);
-      deliverPaidProject(payment.project_id).catch(e=>console.error("Paid PDF delivery queued:",e));
+      retryPaidDelivery(payment.project_id).catch(e=>console.error("Paid PDF delivery queued:",e));
       return;
     }catch(e){console.error("Click webhook:",e);return fail(-7,"Failed to update user");}
   }));
@@ -275,7 +288,7 @@ function startWebApp({bot,db,makeSlides,createPdf,generateSlideImages,InputFile,
     if(db)db.query("update public.slayd_projects p set status=case when exists(select 1 from public.slayd_payments pay where pay.project_id=p.id and pay.status='paid') then 'paid' else 'failed' end,error_message='Recovered after interrupted generation',updated_at=now() where p.status='generating' and p.updated_at<now()-interval '10 minutes'")
       .then(()=>db.query("update public.slayd_payments set status='failed',updated_at=now() where status in ('pending','processing') and project_id in (select id from public.slayd_projects where status='failed' and error_message='Recovered after interrupted generation')"))
       .then(()=>db.query("select id from public.slayd_projects where status='paid' order by created_at asc limit 10"))
-      .then(r=>r.rows.forEach(row=>deliverPaidProject(row.id).catch(e=>console.error("Paid order recovery:",e))))
+      .then(r=>r.rows.forEach(row=>retryPaidDelivery(row.id).catch(e=>console.error("Paid order recovery:",e))))
       .catch(e=>console.error("Interrupted order recovery:",e));
 
   });server.on("error",e=>console.error("Web server:",e));return server;
