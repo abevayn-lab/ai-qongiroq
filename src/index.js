@@ -613,7 +613,7 @@ bot.callbackQuery(/^receipt:(SLD-[A-Z0-9]+)$/i,async ctx=>{
   const r=await db.query("select order_code from public.slayd_payments where order_code=$1 and telegram_user_id=$2 and provider='manual' and status='pending' order by created_at desc limit 1",[order,Number(ctx.from.id)]);
   if(!r.rowCount)return ctx.answerCallbackQuery({text:"Bu buyurtma topilmadi yoki allaqachon ko‘rib chiqilgan.",show_alert:true});
   await ctx.answerCallbackQuery({text:"Chek yuborish mumkin."});
-  await ctx.reply("📸 Endi to‘lov chekini rasm qilib shu chatga yuboring.\\n\\nChek adminga tekshirish uchun yuboriladi. Admin tasdiqlagach, PDF faylingiz shu bot chatiga keladi.");
+  await ctx.reply("📸 Endi to‘lov chekini rasm qilib shu chatga yuboring.\n\nChek adminga tekshirish uchun yuboriladi. Admin tasdiqlagach, PDF faylingiz shu bot chatiga keladi.");
  }catch(e){console.error("Receipt prompt:",e);await ctx.answerCallbackQuery({text:"Xatolik. Qayta urinib ko‘ring.",show_alert:true});}
 });
 
