@@ -430,58 +430,65 @@ function createPdf(data, outputPath) {
     const doc = new PDFDocument({ size: [960, 540], margin: 0, info: { Title: data.title || "SLAYD AI taqdimoti", Author: "SLAYD AI" } });
     const stream = fs.createWriteStream(outputPath);
     doc.pipe(stream);
-    const C = { navy: "#101B35", navy2: "#19294B", blue: "#3977F6", cyan: "#36C5D8", ink: "#18243A", muted: "#65738B", paper: "#F4F7FC", white: "#FFFFFF", line: "#E3EAF4", pale: "#EAF1FF", paleCyan: "#E8F8FA" };
+    const C = { ink:"#182230", muted:"#667085", blue:"#315EFB", teal:"#16A6A6", paper:"#FFFFFF", soft:"#F4F7FC", line:"#E7ECF3", pale:"#EEF3FF", paleTeal:"#EAF8F7", white:"#FFFFFF" };
     const safe = v => String(v || "").replace(/[ʻʼ‘’]/g, "'").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "").replace(/[\u{1F300}-\u{1FAFF}]/gu, "");
-    data.slides.forEach((slide, index) => {
-      if (index) doc.addPage({ size: [960, 540], margin: 0 });
-      const cover = index === 0;
-      doc.rect(0, 0, 960, 540).fill(cover ? C.navy : C.paper);
-      if (cover) {
-        doc.rect(0, 0, 960, 13).fill(C.cyan);
-        doc.circle(830, 110, 170).fill(C.navy2);
-        doc.circle(830, 110, 110).lineWidth(2).strokeColor("#31466F").stroke();
-        doc.circle(830, 110, 64).fill(C.blue);
-        doc.fillColor(C.white).font("Helvetica-Bold").fontSize(12).text("SLAYD AI  /  TAQDIMOT", 68, 54, { characterSpacing: 2 });
-        doc.fillColor(C.cyan).font("Helvetica-Bold").fontSize(11).text("BILIM  •  TAHLIL  •  G'OYA", 70, 145);
-        doc.fillColor(C.white).font("Helvetica-Bold").fontSize(35).text(safe(slide.title || data.title || "Taqdimot"), 68, 183, { width: slide.imagePath ? 550 : 690, height: 120, ellipsis: true });
-        if (slide.imagePath && fs.existsSync(slide.imagePath)) { try { doc.image(slide.imagePath, 675, 245, { fit: [220, 185] }); } catch (e) { console.warn("Cover image:", e.message); } }
-        doc.roundedRect(70, 322, 86, 5, 2).fill(C.cyan);
-        doc.fillColor("#D5DEEF").font("Helvetica").fontSize(17).text(safe(data.subtitle || "Mavzu bo'yicha tayyorlangan taqdimot"), 70, 348, { width: slide.imagePath ? 550 : 690, height: 52, ellipsis: true });
-        slide.bullets.slice(0, 3).forEach((item, i) => {
-          const y = 425 + i * 25;
-          doc.circle(76, y + 7, 3).fill(C.cyan);
-          doc.fillColor("#E6ECF7").font("Helvetica").fontSize(12).text(safe(item), 90, y, { width: slide.imagePath ? 540 : 650, height: 19, ellipsis: true });
+    const hasImage = slide => Boolean(slide.imagePath && fs.existsSync(slide.imagePath));
+    const addImage = (slide,x,y,w,h) => {
+      if (!hasImage(slide)) return false;
+      try {
+        doc.save().roundedRect(x,y,w,h,16).clip();
+        doc.image(slide.imagePath,x,y,{fit:[w,h],align:"center",valign:"center"});
+        doc.restore();
+        return true;
+      } catch(e) { doc.restore(); console.warn("PDF image:",e.message); return false; }
+    };
+    data.slides.forEach((slide,index) => {
+      if(index) doc.addPage({size:[960,540],margin:0});
+      doc.rect(0,0,960,540).fill(C.paper);
+      const cover=index===0;
+      if(cover) {
+        doc.rect(0,0,12,540).fill(C.blue);
+        doc.fillColor(C.blue).font("Helvetica-Bold").fontSize(11).text("SLAYD AI  /  STUDENT PRESENTATION",64,52,{characterSpacing:1.7});
+        doc.fillColor(C.ink).font("Helvetica-Bold").fontSize(39).text(safe(slide.title||data.title||"Taqdimot"),64,116,{width:hasImage(slide)?475:720,height:150,ellipsis:true,lineGap:5});
+        doc.roundedRect(65,284,78,5,2).fill(C.teal);
+        doc.fillColor(C.muted).font("Helvetica").fontSize(17).text(safe(data.subtitle||"Mavzu bo'yicha tayyorlangan taqdimot"),65,310,{width:hasImage(slide)?440:680,height:55,ellipsis:true});
+        (slide.bullets||[]).slice(0,3).forEach((v,i)=>{
+          const y=390+i*30;
+          doc.circle(72,y+7,3).fill(i%2?C.teal:C.blue);
+          doc.fillColor(C.muted).font("Helvetica").fontSize(12).text(safe(v),87,y,{width:hasImage(slide)?420:690,height:20,ellipsis:true});
         });
-        doc.fillColor("#AAB8D0").font("Helvetica").fontSize(10).text("SLAYD AI  •  8 SLAYD  •  PDF", 70, 500);
-        doc.fillColor("#AAB8D0").text("01 / 08", 820, 500, { width: 70, align: "right" });
+        if(hasImage(slide)) addImage(slide,575,105,315,300);
+        doc.moveTo(64,485).lineTo(896,485).strokeColor(C.line).lineWidth(1).stroke();
+        doc.fillColor(C.muted).font("Helvetica").fontSize(10).text("SLAYD AI  •  8 SLAYD",64,502);
+        doc.text("01 / 08",820,502,{width:76,align:"right"});
       } else {
-        doc.rect(0, 0, 960, 10).fill(C.blue);
-        doc.fillColor(C.blue).font("Helvetica-Bold").fontSize(10).text("SLAYD AI   /   TAQDIMOT", 58, 34, { characterSpacing: 1.5 });
-        doc.fillColor(C.muted).font("Helvetica-Bold").fontSize(10).text("BO'LIM  " + String(index).padStart(2, "0"), 790, 34, { width: 110, align: "right" });
-        doc.fillColor(C.ink).font("Helvetica-Bold").fontSize(27).text(safe(slide.title), 58, 76, { width: 820, height: 72, ellipsis: true });
-        doc.roundedRect(58, 153, 64, 4, 2).fill(C.cyan);
-        const bullets = slide.bullets.length ? slide.bullets : ["Ushbu bo'lim bo'yicha qo'shimcha ma'lumot."];
-        const imageLeft = Boolean(slide.imagePath && slide.imagePosition === "left");
-        const cardX = imageLeft ? 330 : 58;
-        const cardW = imageLeft ? 572 : 844;
-        const top = 185, gap = 12, cardH = Math.min(78, (280 - gap * (bullets.length - 1)) / bullets.length);
-        bullets.forEach((item, j) => {
-          const y = top + j * (cardH + gap);
-          doc.roundedRect(cardX, y, cardW, cardH, 12).fill(C.white);
-          doc.roundedRect(cardX, y, 5, cardH, 2).fill(j % 2 ? C.cyan : C.blue);
-          doc.circle(cardX + 33, y + cardH / 2, 12).fill(j % 2 ? C.paleCyan : C.pale);
-          doc.fillColor(C.blue).font("Helvetica-Bold").fontSize(10).text(String(j + 1).padStart(2, "0"), cardX + 24, y + cardH / 2 - 4, { width: 18, align: "center" });
-          doc.fillColor(C.ink).font("Helvetica").fontSize(cardH < 52 ? 13 : 15).text(safe(item), cardX + 61, y + 12, { width: slide.imagePath ? 485 : 750, height: cardH - 18, ellipsis: true, lineGap: 3 });
+        const image=hasImage(slide);
+        const imageLeft=image&&slide.imagePosition==="left";
+        doc.fillColor(C.blue).font("Helvetica-Bold").fontSize(10).text("SLAYD AI  /  TAQDIMOT",58,34,{characterSpacing:1.4});
+        doc.fillColor(C.muted).font("Helvetica-Bold").fontSize(10).text("BO'LIM  "+String(index).padStart(2,"0"),790,34,{width:110,align:"right"});
+        doc.fillColor(C.ink).font("Helvetica-Bold").fontSize(29).text(safe(slide.title),58,75,{width:844,height:70,ellipsis:true});
+        doc.roundedRect(58,151,68,4,2).fill(index%2?C.teal:C.blue);
+        const bullets=(slide.bullets||[]).filter(Boolean).slice(0,5);
+        const list=bullets.length?bullets:["Ushbu bo'lim bo'yicha qo'shimcha ma'lumot."];
+        const cardX=image?(imageLeft?330:58):58;
+        const cardW=image?572:844;
+        const top=184,gap=11,cardH=Math.min(76,(278-gap*(list.length-1))/list.length);
+        list.forEach((item,j)=>{
+          const y=top+j*(cardH+gap);
+          doc.roundedRect(cardX,y,cardW,cardH,12).fill(j%2?C.soft:C.pale);
+          doc.circle(cardX+30,y+cardH/2,12).fill(j%2?C.paleTeal:"#DDE7FF");
+          doc.fillColor(j%2?C.teal:C.blue).font("Helvetica-Bold").fontSize(9).text(String(j+1).padStart(2,"0"),cardX+21,y+cardH/2-3,{width:18,align:"center"});
+          doc.fillColor(C.ink).font("Helvetica").fontSize(cardH<53?12:14).text(safe(item),cardX+55,y+11,{width:cardW-75,height:cardH-16,ellipsis:true,lineGap:3});
         });
-        if (slide.imagePath && fs.existsSync(slide.imagePath)) { try { doc.image(slide.imagePath, imageLeft ? 58 : 650, 190, { fit: [235, 235] }); } catch (e) { console.warn("Slide image:", e.message); } }
-        doc.moveTo(58, 492).lineTo(902, 492).strokeColor(C.line).lineWidth(1).stroke();
-        doc.fillColor(C.muted).font("Helvetica").fontSize(9).text("SLAYD AI  •  O'QUV TAQDIMOTI", 58, 505);
-        doc.fillColor(C.muted).font("Helvetica-Bold").fontSize(10).text(String(index + 1).padStart(2, "0") + " / " + String(data.slides.length).padStart(2, "0"), 820, 503, { width: 80, align: "right" });
+        if(image) addImage(slide,imageLeft?58:650,184,242,278);
+        doc.moveTo(58,492).lineTo(902,492).strokeColor(C.line).lineWidth(1).stroke();
+        doc.fillColor(C.muted).font("Helvetica").fontSize(9).text("SLAYD AI  •  O'QUV TAQDIMOTI",58,505);
+        doc.fillColor(C.muted).font("Helvetica-Bold").fontSize(10).text(String(index+1).padStart(2,"0")+" / "+String(data.slides.length).padStart(2,"0"),820,503,{width:80,align:"right"});
       }
     });
-    stream.on("finish", resolve);
-    stream.on("error", reject);
-    doc.on("error", reject);
+    stream.on("finish",resolve);
+    stream.on("error",reject);
+    doc.on("error",reject);
     doc.end();
   });
 }
