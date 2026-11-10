@@ -197,6 +197,7 @@ bot.command("start", async (ctx) => {
   }
 });
 bot.command("webapp", async (ctx) => {
+  if (!(await requireAccess(ctx))) return;
   if (!validWebAppUrl(WEB_APP_URL)) return ctx.reply("❌ Web App manzili sozlanmagan yoki noto‘g‘ri. Railway → Variables bo‘limida WEB_APP_URL qiymatiga xizmatning haqiqiy HTTPS domenini kiriting (masalan, https://slayd-ai-production.up.railway.app).");
   await ctx.reply("🎨 Taqdimot muharriri:", { reply_markup: new InlineKeyboard().webApp("Web Appni ochish", WEB_APP_URL) });
 });
